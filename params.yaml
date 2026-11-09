@@ -1,0 +1,11 @@
+datasets: [emg_fk, ninapro_db2, ninapro_db8]
+
+build:
+  fs: 500
+  label_fs: 100
+  highpass: 10
+  notch: true
+  calib_s: 30
+  fraction: 1.0
+  workers: auto
+  download_workers: 4

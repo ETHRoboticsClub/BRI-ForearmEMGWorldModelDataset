@@ -1,0 +1,3 @@
+# Keep bytecode out of the src/femg dependency hash
+__pycache__/
+*.pyc

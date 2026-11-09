@@ -1,0 +1,12 @@
+stages:
+  build:
+    foreach: ${datasets}
+    do:
+      cmd: python -m femg.build --dataset ${item} --out data/built --raw data/raw
+      deps:
+        - src/femg
+      params:
+        - build
+      outs:
+        - data/built/${item}:
+            persist: true

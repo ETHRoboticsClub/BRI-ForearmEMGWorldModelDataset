@@ -1,0 +1,27 @@
+schema: '2.0'
+stages:
+  build@emg_fk:
+    cmd: python -m femg.build --dataset emg_fk --out data/built --raw data/raw
+    deps:
+    - path: src/femg
+      hash: md5
+      md5: c2202895386d93794cf295cce3eced84.dir
+      size: 46110
+      nfiles: 11
+    params:
+      params.yaml:
+        build:
+          fs: 500
+          label_fs: 100
+          highpass: 10
+          notch: true
+          calib_s: 30
+          fraction: 1.0
+          workers: auto
+          download_workers: 4
+    outs:
+    - path: data/built/emg_fk
+      hash: md5
+      md5: 642dd63a6d01e6ee97fd252cf38e9e33.dir
+      size: 908530147
+      nfiles: 82
