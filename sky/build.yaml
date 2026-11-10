@@ -1,10 +1,10 @@
 # Builds the full dataset on a CPU machine next to the S3 bucket and pushes it with DVC.
 #
 #   sky launch -c femg-build sky/build.yaml --env SMOKE_TEST=1   # first time: create the machine, check S3
-#   sky exec femg-build sky/build.yaml                           # sync code, dvc pull -> repro -> push
+#   sky exec femg-build sky/build.yaml                           # sync code, pull_data -> dvc repro -> push
 #   sky/fetch.sh                                                 # bring dvc.lock back, then commit it
 #
-# Building is CPU and download bound (no GPU). Raw downloads are cached on the machine's disk between runs
+# Building is download and CPU bound (no GPU). Raw downloads are cached on the machine's disk between runs
 # (autostop keeps the disk), so re-builds after a code change only redo the processing.
 
 name: femg-build
@@ -12,7 +12,7 @@ name: femg-build
 resources:
   infra: aws/us-east-1       # same region as the hri-control bucket
   cpus: 32+
-  memory: 64+                # auto workers = min(cpus - 1, free RAM / 2 GB)
+  memory: 64+                # workers: auto = min(cpus - 1, free RAM / 2 GB)
   disk_size: 512             # raw cache of every dataset (NinaPro DB8 alone is ~27 GB)
   autostop: 30
 
@@ -23,7 +23,7 @@ file_mounts:
 
 envs:
   SMOKE_TEST: 0
-  FRACTION: ""               # e.g. --env FRACTION=0.2 for a partial build into data/dev (not pushed)
+  PERCENT: ""                # e.g. --env PERCENT=20 for a partial build into data/dev (not pushed)
 
 setup: |
   set -e
@@ -40,10 +40,11 @@ run: |
     exit 0
   fi
   mkdir -p ~/femg-raw data && ln -sfn ~/femg-raw data/raw   # downloads live outside the synced workdir
-  if [ -n "$FRACTION" ]; then
-    python -m femg.build --fraction "$FRACTION" --out data/dev
+  if [ -n "$PERCENT" ]; then
+    python scripts/pull_data.py --percent "$PERCENT"
+    python scripts/build_dataset.py --percent "$PERCENT" --out data/dev
     exit 0
   fi
-  dvc pull --allow-missing
-  dvc repro
+  python scripts/pull_data.py     # phase 1: raw files (cached on the machine's disk)
+  dvc repro                       # phase 2: one build stage per dataset
   dvc push

@@ -1,9 +1,12 @@
+"""EMG-FK: 8-channel dry armband + MediaPipe finger angles (Colot et al. 2026). One session per subject."""
+
 from pathlib import Path
 
 import numpy as np
 
-from femg.schema import JOINT_INDEX, N_JOINTS, Recording, RemoteFile, SessionRef
-from femg.sources.base import Source
+from femg.datasets.base import Dataset, Session
+from femg.download import RemoteFile
+from femg.joints import JOINT_INDEX, N_JOINTS
 
 ZENODO = "https://zenodo.org/records/19453843/files"
 MD5 = {
@@ -33,7 +36,7 @@ MD5 = {
 # The order is not documented; it is inferred from the correlation structure of Subject_01 (1-3 are independent
 # of the rest = thumb; 4-15 form four correlated triplets = index..pinky, MCP/PIP/DIP following MediaPipe's
 # landmark order). Verify against figures/figure_angles.png of the authors' repo before trusting per-joint metrics.
-ANGLES = (
+ANGLES = [
     "thumb_cmc_flex",
     "thumb_mcp_flex",
     "thumb_ip_flex",
@@ -49,10 +52,10 @@ ANGLES = (
     "pinky_mcp_flex",
     "pinky_pip_flex",
     "pinky_dip_flex",
-)
+]
 
 
-class EMGFK(Source):
+class EMGFK(Dataset):
     name = "emg_fk"
     citation = "Colot et al. 2026, arXiv:2604.22499, doi:10.5281/zenodo.19453843"
     license = "CC-BY-4.0"
@@ -75,21 +78,27 @@ class EMGFK(Source):
     def subjects(self) -> list[str]:
         return [f"s{i:02d}" for i in range(1, 21)]
 
-    def sessions(self, subject: str) -> list[SessionRef]:
+    def files_to_download(self, subject: str) -> list[RemoteFile]:
         i = int(subject[1:])
         name = f"Subject_{i:02d}.fif"
-        f = RemoteFile(f"{ZENODO}/{name}", name, md5=MD5[i])
-        info = {"condition": "intact", "label_source": "measured", "kin_units": "rad", "task": "free finger motion"}
-        return [SessionRef(self.name, subject, "free", [f], info)]
+        return [RemoteFile(url=f"{ZENODO}/{name}", name=name, md5=MD5[i])]
 
-    def read(self, ref: SessionRef, raw_dir: Path) -> Recording:
+    def sessions(self, subject: str) -> list[str]:
+        return ["free"]
+
+    def load_session(self, subject: str, session: str, raw_dir: Path) -> Session:
         import mne
 
-        raw = mne.io.read_raw_fif(raw_dir / ref.files[0].name, preload=False, verbose="ERROR")
+        path = raw_dir / f"Subject_{int(subject[1:]):02d}.fif"
+        raw = mne.io.read_raw_fif(path, preload=False, verbose="ERROR")
         fs = raw.info["sfreq"]
         emg = raw.get_data(picks=[f"EMG {i}" for i in range(1, 9)]).T.astype(np.float32) * self.emg_unit_scale
         angles = raw.get_data(picks=[f"Angle {i}" for i in range(1, 16)]).T.astype(np.float32)
+
+        # MediaPipe gives 180 deg for a straight joint; canonical joints are 0 rad when straight.
         kin = np.full((len(angles), N_JOINTS), np.nan, np.float32)
-        for j, name in enumerate(ANGLES):
-            kin[:, JOINT_INDEX[name]] = np.deg2rad(180.0 - angles[:, j])
-        return Recording(emg=np.ascontiguousarray(emg), fs=fs, kin=kin, kin_fs=fs)
+        for column, joint in enumerate(ANGLES):
+            kin[:, JOINT_INDEX[joint]] = np.deg2rad(180.0 - angles[:, column])
+
+        info = {"condition": "intact", "label_source": "measured", "kin_units": "rad", "task": "free finger motion"}
+        return Session(subject, session, emg=np.ascontiguousarray(emg), fs=fs, kin=kin, kin_fs=fs, info=info)
