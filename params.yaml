@@ -1,11 +1,12 @@
+# Settings of scripts/build_dataset.py (and of the DVC stages in dvc.yaml).
 datasets: [emg_fk, ninapro_db2, ninapro_db8]
+percent: 100        # percentage of subjects per dataset
+workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
-build:
-  fs: 500
-  label_fs: 100
-  highpass: 10
-  notch: true
-  calib_s: 30
-  fraction: 1.0
-  workers: auto
-  download_workers: 4
+processor:
+  name: default     # a key of PROCESSORS in src/femg/processor.py
+  fs: 500           # EMG rate (Hz)
+  label_fs: 100     # kinematics rate (Hz), must divide fs
+  highpass: 10      # causal high-pass cut-off (Hz)
+  notch: true       # remove mains noise (50/60 Hz and harmonics)
+  calib_s: 30       # seconds at the start of each session used for calib_rms

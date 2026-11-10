@@ -1,12 +1,15 @@
+# One build stage per dataset -> data/processed/<dataset>, pushed to S3 with `dvc push`.
+# Raw data is not tracked (it can be downloaded again): run scripts/pull_data.py before `dvc repro`.
 stages:
   build:
     foreach: ${datasets}
     do:
-      cmd: python -m femg.build --dataset ${item} --out data/built --raw data/raw
+      cmd: python scripts/build_dataset.py --dataset ${item} --overwrite
       deps:
         - src/femg
+        - scripts/build_dataset.py
       params:
-        - build
+        - percent
+        - processor
       outs:
-        - data/built/${item}:
-            persist: true
+        - data/processed/${item}

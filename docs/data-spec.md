@@ -3,24 +3,24 @@
 Goal: one dataset in which **any forearm EMG activation maps to the correct hand pose**, pooled from public
 datasets, to train a generic EMG2pose model that can transfer to transradial amputees.
 
-This file is the contract. `src/femg/schema.py` and `params.yaml` implement it; change them together.
+This file is the contract. `src/femg/joints.py`, `src/femg/processor.py` and `params.yaml` implement it; change them together.
 
 ## 1. Requirements
 
 | # | Requirement | How it is met |
 |---|---|---|
 | R1 | Forearm EMG only (a residual limb has no wrist) | Sources must record over the forearm muscle bellies. Wrist datasets (emg2pose) are excluded from supervised data |
-| R2 | One EMG rate for every session | `build.fs` (500 Hz). Polyphase anti-aliased resampling. **Never upsample**: sessions whose *effective* rate is below `fs` are skipped |
+| R2 | One EMG rate for every session | `processor.fs` (500 Hz). Polyphase anti-aliased resampling. **Never upsample**: datasets whose *effective* rate is below `fs` are skipped |
 | R3 | Filtering a device can reproduce | Causal 10 Hz high-pass + mains notches (per dataset: 50/60 Hz) at build time. Anything stronger (band-pass, envelopes) is a model choice and belongs to the training repo |
-| R4 | Physical units | EMG in volts (`Source.emg_unit_scale`), angles in radians |
-| R5 | One label space | 22 canonical right-hand joints (`schema.CANONICAL_JOINTS`). Unmeasured joints are NaN, and the loader turns them into a `mask` for the loss |
+| R4 | Physical units | EMG in volts (`Dataset.emg_unit_scale`), angles in radians |
+| R5 | One label space | 22 canonical right-hand joints (`joints.CANONICAL_JOINTS`). Unmeasured joints are NaN, and the loader turns them into a `mask` for the loss |
 | R6 | Know where labels come from | `label_source` ∈ measured / mirrored / cue; `kin_units` ∈ rad / rad_uncalibrated |
-| R7 | Time alignment | Label `k` is the hand at EMG sample `k·fs/label_fs`. Known dataset lags are corrected at build time (`Source.kin_lag_s`) |
+| R7 | Time alignment | Label `k` is the hand at EMG sample `k·fs/label_fs`. Known dataset lags are corrected at build time (`Dataset.kin_lag_s`, `Processor.align_labels`) |
 | R8 | Normalization does not leak future data | Stats per session and channel are stored at build time. The default `calib_rms` uses only the first `calib_s` seconds, like a calibration at device startup |
-| R9 | Subject-level splits | Every split is by subject (windows overlap). `fraction` selects subjects, never windows |
-| R10 | Scale from dev to full | `--fraction` gives nested, deterministic subject subsets for building and for loading |
+| R9 | Subject-level splits | Every split is by subject (windows overlap). `percent` selects subjects, never windows |
+| R10 | Scale from dev to full | `--percent` takes the first N% of subjects: nested and identical for downloading, building and loading |
 | R11 | Reproducible + shareable | DVC stage per dataset → `s3://hri-control/forearm-emg-dataset`; `dvc.lock` pins the exact build |
-| R12 | Fast, low-memory build | Per-session workers (spawned processes), downloads overlapped with processing, float32 throughout, resample before filtering, atomic and resumable writes |
+| R12 | Simple, fast, low-memory build | Separate phases (download, then build). One worker process per subject, float32 throughout, resample before filtering, atomic and resumable writes |
 
 ## 2. Decisions and why
 

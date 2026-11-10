@@ -1,27 +1,86 @@
 schema: '2.0'
 stages:
   build@emg_fk:
-    cmd: python -m femg.build --dataset emg_fk --out data/built --raw data/raw
+    cmd: python scripts/build_dataset.py --dataset emg_fk --overwrite
     deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 9369e3997ba39ddb8474f700347bc203
+      size: 5349
     - path: src/femg
       hash: md5
-      md5: c2202895386d93794cf295cce3eced84.dir
-      size: 46110
+      md5: 5cd9607bca6e402c1a5b3670f4ef15ba.dir
+      size: 43060
       nfiles: 11
     params:
       params.yaml:
-        build:
+        percent: 100
+        processor:
+          name: default
           fs: 500
           label_fs: 100
           highpass: 10
           notch: true
           calib_s: 30
-          fraction: 1.0
-          workers: auto
-          download_workers: 4
     outs:
-    - path: data/built/emg_fk
+    - path: data/processed/emg_fk
       hash: md5
-      md5: 642dd63a6d01e6ee97fd252cf38e9e33.dir
-      size: 908530147
-      nfiles: 82
+      md5: e0a3f44763e771641e5c4f433754bcf6.dir
+      size: 908529591
+      nfiles: 81
+  build@ninapro_db2:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db2 --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 9369e3997ba39ddb8474f700347bc203
+      size: 5349
+    - path: src/femg
+      hash: md5
+      md5: 5cd9607bca6e402c1a5b3670f4ef15ba.dir
+      size: 43060
+      nfiles: 11
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          name: default
+          fs: 500
+          label_fs: 100
+          highpass: 10
+          notch: true
+          calib_s: 30
+    outs:
+    - path: data/processed/ninapro_db2
+      hash: md5
+      md5: ca4809ce521d5e47d1de8af7410d10e7.dir
+      size: 2850109178
+      nfiles: 321
+  build@ninapro_db8:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db8 --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 9369e3997ba39ddb8474f700347bc203
+      size: 5349
+    - path: src/femg
+      hash: md5
+      md5: 5cd9607bca6e402c1a5b3670f4ef15ba.dir
+      size: 43060
+      nfiles: 11
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          name: default
+          fs: 500
+          label_fs: 100
+          highpass: 10
+          notch: true
+          calib_s: 30
+    outs:
+    - path: data/processed/ninapro_db8
+      hash: md5
+      md5: 4a03437d977f98e6e79599744ad88a97.dir
+      size: 1254469837
+      nfiles: 145

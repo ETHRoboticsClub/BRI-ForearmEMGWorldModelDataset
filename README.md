@@ -11,35 +11,75 @@ space and metadata), for training a generic EMG → hand-pose model that can tra
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,dvc]"
 pre-commit install
-dvc pull            # the built dataset of this commit (S3 access: see HRI-ContinuousTraining/docs/dvc-access.md)
+dvc pull            # the processed dataset of this commit (S3 access: see HRI-ContinuousTraining/docs/dvc-access.md)
 ```
 
-## Build
+## The three phases
+
+```
+ PHASE 1  scripts/pull_data.py       internet  ->  data/raw/<dataset>/         (original files, untouched)
+ PHASE 2  scripts/build_dataset.py   data/raw  ->  data/processed/<dataset>/   (common format)
+ PHASE 3  femg.loader.EMGWindows     data/processed  ->  training windows
+```
 
 ```bash
-femg-build --dataset emg_fk --fraction 0.1 --out data/dev   # dev: 10% of subjects, seconds to minutes
-femg-build --fraction 0.3 --out data/dev                    # grow it: the 10% already built is reused
-dvc repro                                                   # full build -> data/built (params.yaml)
-dvc push && git add dvc.lock && git commit                  # share it
+python scripts/pull_data.py --dataset emg_fk --percent 10      # 1. download the first 10% of the subjects
+python scripts/build_dataset.py --dataset emg_fk --percent 10  # 2. process them
 ```
 
-- `--fraction` picks subjects with a stable hash. The subsets are nested (0.1 ⊂ 0.3 ⊂ 1.0) and identical between
-  the builder and the loader.
-- The build resumes: sessions already built with the same `params.yaml` and code are skipped.
-- Raw downloads are cached in `data/raw/<dataset>` (`--raw` to point elsewhere). They are not versioned because
-  they can be downloaded again.
-- On a big CPU machine next to the bucket: `sky launch -c femg-build sky/build.yaml` (see the file).
+- `--percent` takes the first N% of a dataset's subjects (at least one). The same rule is used by both scripts and
+  the loader, and the subsets are nested: the subjects of 10% are also in 30%.
+- Both scripts can be stopped and started again. Files already downloaded and sessions already built with the
+  same settings are skipped. `--overwrite` rebuilds everything.
+- `build_dataset.py` only builds subjects whose raw files are present. Processing settings live in `params.yaml`.
+- Raw data is not versioned (it can be downloaded again). `data/processed` is versioned with DVC:
 
-Output, one folder per session (`emg.npy` (T, C) volts, `kin.npy` (T/r, 22) radians/NaN, `stimulus.npy`,
-`meta.json`) plus `<dataset>/sessions.parquet`. Details in `src/femg/store.py`.
+```bash
+python scripts/pull_data.py                      # all raw data (~40 GB)
+dvc repro                                        # full build, one stage per dataset (params.yaml)
+dvc push && git add dvc.lock && git commit       # share it
+```
+
+On a big CPU machine next to the bucket: `sky launch -c femg-build sky/build.yaml` (see the file).
+
+## How a session is processed
+
+`build_dataset.py` runs this for every session:
+
+```python
+session = dataset.load_session(subject, name, raw_dir)  # native rates, EMG in volts, canonical joints in rad
+session = processor.process(session, dataset)  # resample -> filter -> labels -> align -> stats
+save_session(folder, session, make_meta(dataset, session, processor))
+```
+
+`Processor.process` (`src/femg/processor.py`) is a short list of steps:
+
+1. `resample_emg`: EMG to `fs` (500 Hz), anti-aliased.
+2. `filter_emg`: causal 10 Hz high-pass + mains notches.
+3. `resample_labels`: kinematics and stimulus to `label_fs` (100 Hz).
+4. `align_labels`: correct the dataset's `kin_lag_s` and crop so label `k` ↔ EMG sample `k * fs / label_fs`.
+5. `add_stats`: per-channel EMG and per-joint kinematics stats for normalization.
+
+To change the build, subclass `Processor`, override or add steps, register it in `PROCESSORS` and set
+`processor.name` in `params.yaml` (there is an example at the top of `processor.py`).
+
+The output has one folder per session (`emg.npy` (T, C) volts, `kin.npy` (T/r, 22) radians/NaN,
+`stimulus.npy`, `meta.json`), plus `<dataset>/sessions.parquet`. See `src/femg/save.py` for details.
 
 ## Load (from the training repo)
 
 ```python
 from femg.loader import EMGWindows
 
-ds = EMGWindows("data/forearm", datasets=["emg_fk", "ninapro_db2", "ninapro_db8"], fraction=0.2,
-                window_s=0.48, stride_s=0.08, montage="ring8", normalize="calib_rms")
+ds = EMGWindows(
+    "data/forearm",
+    datasets=["emg_fk", "ninapro_db2", "ninapro_db8"],
+    percent=20,
+    window_s=0.48,
+    stride_s=0.08,
+    montage="ring8",
+    normalize="calib_rms",
+)
 train, val, test = ds.split_subjects(val=0.1, test=0.1)
 loader = torch.utils.data.DataLoader(train, batch_size=256, shuffle=True, num_workers=8)
 # batch: emg (B, 8, 240), kin (B, 22), mask (B, 22) -> loss = ((pred - kin) ** 2 * mask).sum() / mask.sum()
@@ -49,7 +89,7 @@ In `HRI-ContinuousTraining`:
 
 ```bash
 pip install "femg @ git+ssh://git@github.com/ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset.git"
-dvc import git@github.com:ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset data/built -o data/forearm
+dvc import git@github.com:ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset data/processed -o data/forearm
 ```
 
 `dvc import` pins the dataset version in the training repo's git history, and `dvc update data/forearm.dvc` moves
@@ -57,23 +97,32 @@ it to a newer build. On a machine with lots of RAM (e.g. the GPU box), pass `in_
 
 ## Add a dataset
 
-1. `src/femg/sources/<name>.py`: subclass `Source`, fill in the metadata (cite where every value comes from) and
-   implement `subjects`, `sessions` (download URLs) and `read` (→ volts, canonical joints in radians).
-2. Register it in `src/femg/sources/__init__.py` and add it to `datasets` in `params.yaml`.
-3. Open one real file and record what you checked in `verified`. Then `femg-build --dataset <name> --fraction 0.1`.
+1. Create `src/femg/datasets/<name>.py` with a subclass of `Dataset` (copy `emg_fk.py`, the shortest one). Fill in
+   the metadata (cite where every value comes from) and implement:
+   - `subjects()`: the subject ids
+   - `files_to_download(subject)`: `RemoteFile`s (url, name, optional md5, optional zip members to keep)
+   - `sessions(subject)`: the session names
+   - `load_session(subject, session, raw_dir)`: a `Session` with EMG in volts and canonical joints in radians
+2. Add it to `DATASETS` in `src/femg/datasets/__init__.py` and to `datasets` in `params.yaml`.
+3. `python scripts/pull_data.py --dataset <name> --percent 10`, then `python scripts/build_dataset.py --dataset <name>
+   --percent 10 --workers 1` (one worker prints errors directly). Open one real file and record what you checked in
+   `verified`.
 
 ## Structure
 
 ```
-params.yaml              build parameters (fs, label_fs, filters, fraction, workers)
-dvc.yaml                 one build stage per dataset -> data/built/<dataset>
+params.yaml                  build settings: datasets, percent, workers, processor
+dvc.yaml                     one build stage per dataset -> data/processed/<dataset>
+scripts/
+  pull_data.py               PHASE 1: download raw files
+  build_dataset.py           PHASE 2: load -> process -> save, in parallel over subjects
 src/femg/
-  schema.py              canonical joints, label sources, Recording/SessionRef
-  sources/               one reader per public dataset
-  signal.py              resampling, causal filters, stats
-  build.py               parallel builder (femg-build)
-  store.py               downloads + on-disk layout
-  loader.py              EMGWindows: windows on the fly, montages, normalization, subject splits
-  subset.py              nested subject fractions
-sky/build.yaml           full build on an AWS CPU machine
+  joints.py                  the 22 canonical joints, label sources, units
+  download.py                RemoteFile + download_file (md5, zip members)
+  datasets/                  one Dataset subclass per public dataset (base.py: Dataset, Session)
+  processor.py               Processor: the processing steps
+  signal_utils.py            resampling, causal filter, stats
+  save.py                    on-disk layout: save_session, sessions.parquet
+  loader.py                  PHASE 3: EMGWindows (windows on the fly, montages, normalization, splits)
+sky/build.yaml               full build on an AWS CPU machine
 ```
