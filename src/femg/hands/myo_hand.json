@@ -1,0 +1,33 @@
+{
+  "title": "MyoHand (MyoSuite)",
+  "builder": "femg.hand_models:myo_hand",
+  "landmarks": {
+    "palmar_joint": "mcp2_flexion_r",
+    "radial_body": "2proxph_r",
+    "ulnar_body": "5proxph_r"
+  },
+  "joints": {
+    "deviation_r":      {"label": "wrist_dev", "at_0": -0.17, "at_1": 0.22, "neutral": "mean"},
+    "flexion_r":        {"label": "wrist_flex", "at_0": -0.39, "at_1": 0.39, "neutral": "mean"},
+    "cmc_flexion_r":    {"label": "thumb_cmc_abd", "at_0": -0.78, "at_1": 0.0, "if_missing": -0.39},
+    "cmc_abduction_r":  {"label": "thumb_cmc_flex", "at_0": 0.0, "at_1": 0.78},
+    "mp_flexion_r":     {"label": "thumb_mcp_flex", "at_0": 0.0, "at_1": -0.79},
+    "ip_flexion_r":     {"label": "thumb_ip_flex", "at_0": 0.0, "at_1": -1.31},
+    "mcp2_flexion_r":   {"label": "index_mcp_flex", "at_0": 0.0, "at_1": 1.571},
+    "mcp2_abduction_r": {"label": "index_middle_abd", "at_0": 0.0, "at_1": 0.262},
+    "pm2_flexion_r":    {"label": "index_pip_flex", "at_0": 0.0, "at_1": 1.571},
+    "md2_flexion_r":    {"label": "index_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "pm2_flexion_r", "times": 0.67}},
+    "mcp3_flexion_r":   {"label": "middle_mcp_flex", "at_0": 0.0, "at_1": 1.571},
+    "mcp3_abduction_r": {"label": null, "at_0": 0.0},
+    "pm3_flexion_r":    {"label": "middle_pip_flex", "at_0": 0.0, "at_1": 1.571},
+    "md3_flexion_r":    {"label": "middle_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "pm3_flexion_r", "times": 0.67}},
+    "mcp4_flexion_r":   {"label": "ring_mcp_flex", "at_0": 0.0, "at_1": 1.571},
+    "mcp4_abduction_r": {"label": "middle_ring_abd", "at_0": 0.0, "at_1": -0.262},
+    "pm4_flexion_r":    {"label": "ring_pip_flex", "at_0": 0.0, "at_1": 1.571},
+    "md4_flexion_r":    {"label": "ring_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "pm4_flexion_r", "times": 0.67}},
+    "mcp5_flexion_r":   {"label": "pinky_mcp_flex", "at_0": 0.0, "at_1": 1.571},
+    "mcp5_abduction_r": {"label": "ring_pinky_abd", "at_0": 0.0, "at_1": -0.262},
+    "pm5_flexion_r":    {"label": "pinky_pip_flex", "at_0": 0.0, "at_1": 1.571},
+    "md5_flexion_r":    {"label": "pinky_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "pm5_flexion_r", "times": 0.67}}
+  }
+}

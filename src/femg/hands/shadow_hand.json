@@ -1,0 +1,36 @@
+{
+  "title": "Shadow Hand E3M5",
+  "model": "shadow_hand",
+  "entry": "right_hand",
+  "landmarks": {
+    "palmar_joint": "rh_FFJ3",
+    "radial_body": "rh_ffknuckle",
+    "ulnar_body": "rh_lfknuckle"
+  },
+  "joints": {
+    "rh_WRJ2": {"label": "wrist_dev", "at_0": -0.26, "at_1": 0.175, "neutral": "mean", "moves": "radial", "range": [-0.52, 0.17]},
+    "rh_WRJ1": {"label": "wrist_flex", "at_0": -0.35, "at_1": 0.489, "neutral": "mean", "moves": "palmar", "range": [-0.7, 0.49]},
+    "rh_FFJ4": {"label": "index_middle_abd", "at_0": 0.0, "at_1": -0.349, "moves": "ulnar", "range": [-0.35, 0.35]},
+    "rh_FFJ3": {"label": "index_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [-0.26, 1.57]},
+    "rh_FFJ2": {"label": "index_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_FFJ1": {"label": "index_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "rh_FFJ2", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_MFJ4": {"label": null, "at_0": 0.0, "moves": "ulnar", "range": [-0.35, 0.35]},
+    "rh_MFJ3": {"label": "middle_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [-0.26, 1.57]},
+    "rh_MFJ2": {"label": "middle_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_MFJ1": {"label": "middle_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "rh_MFJ2", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_RFJ4": {"label": "middle_ring_abd", "at_0": 0.0, "at_1": -0.349, "moves": "radial", "range": [-0.35, 0.35]},
+    "rh_RFJ3": {"label": "ring_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [-0.26, 1.57]},
+    "rh_RFJ2": {"label": "ring_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_RFJ1": {"label": "ring_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "rh_RFJ2", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_LFJ5": {"label": "palm_arch", "at_0": 0.0, "at_1": 0.785, "moves": "palmar", "range": [0.0, 0.79]},
+    "rh_LFJ4": {"label": "ring_pinky_abd", "at_0": 0.0, "at_1": -0.349, "moves": "radial", "range": [-0.35, 0.35]},
+    "rh_LFJ3": {"label": "pinky_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [-0.26, 1.57]},
+    "rh_LFJ2": {"label": "pinky_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_LFJ1": {"label": "pinky_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "rh_LFJ2", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "rh_THJ5": {"label": "thumb_cmc_abd", "at_0": 0.7, "at_1": 0.0, "moves": "palmar", "range": [-1.05, 1.05], "if_missing": 0.35},
+    "rh_THJ4": {"label": "thumb_cmc_flex", "at_0": 0.0, "at_1": 1.222, "moves": "palmar", "range": [0.0, 1.22]},
+    "rh_THJ3": {"label": null, "at_0": 0.0, "moves": "palmar", "range": [-0.21, 0.21]},
+    "rh_THJ2": {"label": "thumb_mcp_flex", "at_0": 0.0, "at_1": 0.698, "moves": "ulnar", "range": [-0.7, 0.7]},
+    "rh_THJ1": {"label": "thumb_ip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "ulnar", "range": [-0.26, 1.57]}
+  }
+}

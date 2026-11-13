@@ -1,0 +1,28 @@
+{
+  "title": "Aero Hand Open",
+  "model": "tetheria_aero_hand_open",
+  "entry": "right_hand",
+  "landmarks": {
+    "palmar_joint": "right_index_mcp_flex",
+    "radial_body": "right_index_proximal_link",
+    "ulnar_body": "right_pinky_proximal_link"
+  },
+  "joints": {
+    "right_index_mcp_flex":  {"label": "index_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_index_pip":       {"label": "index_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_index_dip":       {"label": "index_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "right_index_pip", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_middle_mcp_flex": {"label": "middle_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_middle_pip":      {"label": "middle_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_middle_dip":      {"label": "middle_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "right_middle_pip", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_ring_mcp_flex":   {"label": "ring_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_ring_pip":        {"label": "ring_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_ring_dip":        {"label": "ring_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "right_ring_pip", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_pinky_mcp_flex":  {"label": "pinky_mcp_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_pinky_pip":       {"label": "pinky_pip_flex", "at_0": 0.0, "at_1": 1.571, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_pinky_dip":       {"label": "pinky_dip_flex", "at_0": 0.0, "at_1": 1.571, "if_missing": {"copy": "right_pinky_pip", "times": 0.67}, "moves": "palmar", "range": [0.0, 1.57]},
+    "right_thumb_cmc_abd":   {"label": "thumb_cmc_flex", "at_0": 0.0, "at_1": 1.4, "moves": "palmar", "range": [0.0, 1.75]},
+    "right_thumb_cmc_flex":  {"label": "thumb_cmc_abd", "at_0": 0.96, "at_1": 0.0, "moves": "distal", "range": [0.0, 0.96], "if_missing": 0.48},
+    "right_thumb_mcp":       {"label": "thumb_mcp_flex", "at_0": 0.0, "at_1": 1.2, "moves": "distal", "range": [0.0, 1.57]},
+    "right_thumb_ip":        {"label": "thumb_ip_flex", "at_0": 0.0, "at_1": 1.2, "moves": "distal", "range": [0.0, 1.57]}
+  }
+}
