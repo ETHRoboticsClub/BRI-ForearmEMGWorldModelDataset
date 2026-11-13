@@ -1,5 +1,3 @@
-"""Small signal-processing functions used by the Processor. Arrays are float32 and time-major (T, C)."""
-
 import math
 import warnings
 from fractions import Fraction

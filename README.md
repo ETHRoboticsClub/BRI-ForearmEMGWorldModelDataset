@@ -66,6 +66,20 @@ To change the build, subclass `Processor`, override or add steps, register it in
 The output has one folder per session (`emg.npy` (T, C) volts, `kin.npy` (T/r, 22) radians/NaN,
 `stimulus.npy`, `meta.json`), plus `<dataset>/sessions.parquet`. See `src/femg/save.py` for details.
 
+## Inspect the data
+
+```bash
+pip install -e ".[viz]"
+python scripts/compare_datasets.py                          # output/compare/{emg,kin}.png
+python scripts/view_hand.py data/processed/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
+```
+
+- `compare_datasets.py`: each dataset next to all of them pooled. `emg.png` shows the ring8 RMS per scenario (all,
+  still, moving, open, closed hand: defined from the kinematics with per-session percentiles), raw in µV and divided
+  by `calib_rms`. `kin.png` shows the range of every canonical joint.
+- `view_hand.py`: plays a session's `kin.npy` on the menagerie Shadow Hand (right) in the browser (mjviser), with the
+  canonical name and angle on every joint, and play/pause/step/speed controls.
+
 ## Load (from the training repo)
 
 ```python
