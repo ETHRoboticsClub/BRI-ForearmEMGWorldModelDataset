@@ -1,9 +1,3 @@
-"""NinaPro databases (https://ninapro.hevs.ch). Downloads are public, no login.
-
-Both databases store one MATLAB file per session with the variables `emg`, `glove` (CyberGlove) and
-`restimulus` (instructed movement), all at the same rate.
-"""
-
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +8,7 @@ from femg.joints import JOINT_INDEX, N_JOINTS
 
 BASE_URL = "https://ninapro.hevs.ch/files"
 
-# CyberGlove II sensor order (manufacturer numbering). The 18-sensor model drops the DIP sensors.
-# Checked on DB8 S1_E1_A3: MCP/PIP pairs correlate at 0.9 and the three abduction sensors anti-correlate with flexion.
+# CyberGlove II sensor order. Checked on DB8 S1_E1_A3: MCP/PIP pairs correlate at 0.9.
 CYBERGLOVE_22 = [
     "thumb_cmc_flex",  # thumb rotation across the palm
     "thumb_mcp_flex",
@@ -44,13 +37,12 @@ CYBERGLOVE_18 = [name for name in CYBERGLOVE_22 if not name.endswith("_dip_flex"
 
 
 def load_mat(path: Path, names: list[str]) -> dict[str, np.ndarray]:
-    """Read some variables from a MATLAB file (v5 files with scipy, v7.3 files with h5py)."""
     import scipy.io
 
     try:
         data = scipy.io.loadmat(path, variable_names=names)
         return {k: data[k] for k in names if k in data}
-    except NotImplementedError:  # scipy cannot read v7.3 files, which are HDF5
+    except NotImplementedError:  # v7.3 files are HDF5
         import h5py
 
         with h5py.File(path, "r") as f:
@@ -58,7 +50,6 @@ def load_mat(path: Path, names: list[str]) -> dict[str, np.ndarray]:
 
 
 def glove_to_canonical(glove: np.ndarray, sensors: list[str]) -> np.ndarray:
-    """CyberGlove readings (degree-like) -> canonical joints in radians, NaN for joints the glove lacks."""
     kin = np.full((len(glove), N_JOINTS), np.nan, np.float32)
     for column, joint in enumerate(sensors):
         kin[:, JOINT_INDEX[joint]] = np.deg2rad(glove[:, column])
@@ -69,7 +60,7 @@ def read_ninapro_session(path: Path, fs: float, sensors: list[str], subject: str
     data = load_mat(path, ["emg", "glove", "restimulus"])
     n = min(len(v) for v in data.values())  # restimulus is sometimes one sample shorter
 
-    emg = np.ascontiguousarray(data["emg"][:n], np.float32)  # already in volts (DB2 S1: std ~4e-5)
+    emg = np.ascontiguousarray(data["emg"][:n], np.float32)  # volts (DB2 S1: std ~4e-5)
     kin = None
     if "glove" in data:
         kin = glove_to_canonical(data["glove"][:n].astype(np.float32), sensors)
@@ -103,7 +94,6 @@ class NinaProDB2(Dataset):
         return [f"s{i:02d}" for i in range(1, 41)]
 
     def files_to_download(self, subject: str) -> list[RemoteFile]:
-        # One zip per subject; keep only the exercises we use.
         i = int(subject[1:])
         members = tuple(f"S{i}_{e}_A1.mat" for e in self.EXERCISES)
         return [RemoteFile(url=f"{BASE_URL}/DB2_Preproc/DB2_s{i}.zip", name=f"DB2_s{i}.zip", unzip=members)]
@@ -113,7 +103,6 @@ class NinaProDB2(Dataset):
 
     def load_session(self, subject: str, session: str, raw_dir: Path) -> Session:
         path = raw_dir / f"S{int(subject[1:])}_{session}_A1.mat"
-        # kin_units: "uncalibrated signal from the 22 sensors of the cyberglove"
         info = {"condition": "intact", "label_source": "measured", "kin_units": "rad_uncalibrated"}
         return read_ninapro_session(path, self.native_fs, CYBERGLOVE_22, subject, session, info)
 
@@ -152,6 +141,6 @@ class NinaProDB8(Dataset):
     def load_session(self, subject: str, session: str, raw_dir: Path) -> Session:
         path = raw_dir / f"S{int(subject[1:])}_E1_{session}.mat"
         condition = "amputee_transradial" if subject in self.AMPUTEES else "intact"
-        # The glove is on the left hand doing mirrored movements (a phantom hand for amputees), and calibrated.
+        # calibrated glove on the left hand, mirroring the movement (the phantom hand for amputees)
         info = {"condition": condition, "label_source": "mirrored", "kin_units": "rad"}
         return read_ninapro_session(path, self.native_fs, CYBERGLOVE_18, subject, session, info)

@@ -7,7 +7,6 @@ import pandas as pd
 
 from femg.joints import CANONICAL_JOINTS
 
-# Columns of sessions.parquet (all copied from meta.json).
 INDEX_COLUMNS = [
     "key",
     "dataset",
@@ -30,7 +29,6 @@ def session_folder(out_dir: Path, dataset_name: str, subject: str, session: str)
 
 
 def is_saved(folder: Path, settings: dict) -> bool:
-    """True if the session is on disk and was built with the same processor settings."""
     meta_file = folder / "meta.json"
     if not meta_file.exists():
         return False
@@ -38,7 +36,6 @@ def is_saved(folder: Path, settings: dict) -> bool:
 
 
 def make_meta(dataset, session, processor) -> dict:
-    """Everything about a processed session except the arrays."""
     key = f"{dataset.name}/{session.subject}/{session.name}"
     measured = [j for j in range(len(CANONICAL_JOINTS)) if np.isfinite(session.kin[:, j]).any()]
     meta = {
@@ -64,8 +61,7 @@ def make_meta(dataset, session, processor) -> dict:
 
 
 def save_session(folder: Path, session, meta: dict) -> None:
-    """Write into a temporary folder first and rename it at the end, so a crash never leaves half a session."""
-    tmp = folder.with_name(folder.name + ".tmp")
+    tmp = folder.with_name(folder.name + ".tmp")  # renamed at the end: a crash never leaves half a session
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     np.save(tmp / "emg.npy", session.emg.astype(np.float32))
@@ -77,7 +73,6 @@ def save_session(folder: Path, session, meta: dict) -> None:
 
 
 def write_index(dataset_folder: Path) -> pd.DataFrame:
-    """(Re)write <dataset>/sessions.parquet from the meta.json files on disk."""
     rows = []
     for meta_file in sorted(dataset_folder.glob("*/*/meta.json")):
         meta = json.loads(meta_file.read_text())

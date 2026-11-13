@@ -1,5 +1,3 @@
-"""Download one file into a folder. Used by scripts/pull_data.py."""
-
 import hashlib
 import shutil
 import time
@@ -11,16 +9,10 @@ from pathlib import Path
 
 @dataclass
 class RemoteFile:
-    """A file to download.
-
-    If `unzip` is not empty, the file is a zip archive: only the listed members (matched by file name) are kept,
-    extracted directly into the folder, and the zip itself is deleted.
-    """
-
     url: str
     name: str
     md5: str | None = None
-    unzip: tuple[str, ...] = ()
+    unzip: tuple[str, ...] = ()  # zip members to keep (flat in the folder); the zip is deleted
 
 
 def is_downloaded(file: RemoteFile, folder: Path) -> bool:
@@ -30,15 +22,10 @@ def is_downloaded(file: RemoteFile, folder: Path) -> bool:
 
 
 def download_file(file: RemoteFile, folder: Path, retries: int = 3) -> None:
-    """Download `file` into `folder` (does nothing if it is already there).
-
-    The data goes to a `.part` file first and is renamed at the end, so an interrupted download never leaves
-    a file that looks complete.
-    """
     if is_downloaded(file, folder):
         return
     folder.mkdir(parents=True, exist_ok=True)
-    part = folder / (file.name + ".part")
+    part = folder / (file.name + ".part")  # renamed when complete: an interrupted download never looks done
 
     for attempt in range(1, retries + 1):
         try:
@@ -79,7 +66,6 @@ def md5_of(path: Path) -> str:
 
 
 def extract_members(archive: Path, folder: Path, members: tuple[str, ...]) -> None:
-    """Extract the wanted members flat into `folder` (archives nest them in folders that vary)."""
     missing = set(members)
     with zipfile.ZipFile(archive) as z:
         for entry in z.infolist():

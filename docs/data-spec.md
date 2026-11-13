@@ -16,7 +16,7 @@ This file is the contract. `src/femg/joints.py`, `src/femg/processor.py` and `pa
 | R5 | One label space | 22 canonical right-hand joints (`joints.CANONICAL_JOINTS`). Unmeasured joints are NaN, and the loader turns them into a `mask` for the loss |
 | R6 | Know where labels come from | `label_source` ∈ measured / mirrored / cue; `kin_units` ∈ rad / rad_uncalibrated |
 | R7 | Time alignment | Label `k` is the hand at EMG sample `k·fs/label_fs`. Known dataset lags are corrected at build time (`Dataset.kin_lag_s`, `Processor.align_labels`) |
-| R8 | Normalization does not leak future data | Stats per session and channel are stored at build time. The default `calib_rms` uses only the first `calib_s` seconds, like a calibration at device startup |
+| R8 | Normalization needs no labels and can be reproduced on a device | Two anchors per session and channel, stored at build time (`emg_stats.floor/active`, `kin_stats.low/high`), see §2. On a device they come from a 1-2 min calibration (rest + full open/close). `calib_rms` (first `calib_s` s) is kept for comparison |
 | R9 | Subject-level splits | Every split is by subject (windows overlap). `percent` selects subjects, never windows |
 | R10 | Scale from dev to full | `--percent` takes the first N% of subjects: nested and identical for downloading, building and loading |
 | R11 | Reproducible + shareable | DVC stage per dataset → `s3://hri-control/forearm-emg-dataset`; `dvc.lock` pins the exact build |
@@ -41,9 +41,24 @@ window/stride/lag experiments need no rebuild.
 is the common denominator and matches the current 8-channel TRR model. Rotation of the ring is **not** aligned
 across datasets, so train with random circular channel shifts.
 
-**Label normalization.** Calibrated angles stay in radians. Raw CyberGlove (DB2) has a per-session gain and
-offset, so by default (`label_norm="uncalibrated_zscore"`) those sessions are z-scored per session and joint.
-Mixing z-scored and radian targets in one head is a known compromise (see open questions).
+Diagram: [normalization.svg](diagrams/normalization.svg).
+
+**EMG normalization: two anchors, no labels** (`src/femg/normalize.py`). Per session and channel, the moving RMS
+(`rms_window_s` = 100 ms) has a `floor` (p10, ≈ rest) and an `active` level (p95, ≈ strong contraction). Default
+input = EMG / `active`. Why not `calib_rms`: the first 30 s holds 28-66 % movement depending on the protocol, so
+`calib_rms` / session median ranged 1.3-3.9, even 1.9 vs 3.9 for two sessions of one subject. The EMG p10 needs no
+labels and sits close to real rest (NinaPro `stimulus == 0` is 1.3-1.6 × p10).
+
+**Label normalization: open = 0, closed = 1.** Per session and joint, `kin_stats.low` (p2) → 0 and `high` (p98) → 1.
+One rule removes the gain/offset of the uncalibrated DB2 glove and the different ranges of the datasets (DB8 flexes
+much less than EMG-FK and DB2). Radians stay on disk for the datasets where they are trustworthy.
+
+**Acceptance check: percentile against percentile, per scenario** (`scripts/compare_datasets.py`). Means are not
+comparable (NinaPro is ~40 % rest, EMG-FK is free motion), so each metric is compared at p10..p90 against a pool that
+weighs every dataset equally, within scenarios defined from the hand alone (EMG-FK has no stimulus): **rest** (still
++ open), **hold** (still + closed), **moving**. Metrics: normalized EMG per scenario (±25 %), hand flexion (±0.10),
+hand speed while moving (±25 %), movement bout duration (±25 %). A FAIL is information, not a bug: it says the
+datasets record different behaviour there, and the loader should balance them by scenario and dataset.
 
 ## 3. Datasets
 
@@ -72,17 +87,20 @@ Mixing z-scored and radian targets in one head is a known compromise (see open q
 3. **Full build of the three datasets** on Sky (`sky/build.yaml`), then `dvc push` and commit `dvc.lock`.
 4. **Wire the training repo**: `dvc import` + `pip install` of this package; replace `EMGFK` with
    `EMGWindows(montage="ring8")`; check that EMG-FK-only results match the current baseline.
-5. **QC report per session**: flat or saturated channels, glove glitches (e.g. DB2 sensor 11 hits ±800), stimulus
+5. **Balance in the loader**: sampling weights per dataset and scenario (rest / hold / moving), and random gain
+   per channel (±30-50 %) as augmentation, so the remaining amplitude mismatch does not matter.
+6. **QC report per session**: flat or saturated channels, glove glitches (e.g. DB2 sensor 11 hits ±800), stimulus
    coverage. Flag sessions in meta, and have the loader drop flagged ones.
-6. **Add DB7, DB3, DB4, then SEEDS** (one module each; tests with a small real file).
-7. **Channel-agnostic option**: electrode geometry (angle around the forearm, distance from the elbow) in meta for
+7. **Add DB7, DB3, DB4, then SEEDS** (one module each; tests with a small real file). Each one must go through
+   `scripts/compare_datasets.py` before it joins the pool.
+8. **Channel-agnostic option**: electrode geometry (angle around the forearm, distance from the elbow) in meta for
    a set/attention encoder, instead of fixed montages.
-8. **Evaluation protocol**: leave-one-subject-out, leave-one-dataset-out, and amputee-only (DB8 s11/s12, DB7
+9. **Evaluation protocol**: leave-one-subject-out, leave-one-dataset-out, and amputee-only (DB8 s11/s12, DB7
    s21/s22) reported separately.
 
 ## 5. Open questions
 
 - Deployment hardware: sampling rate, channel count, electrode type (dry/monopolar like MindRove, or bipolar)?
-- Target space: is a calibrated-radian head enough, or should every session be z-scored (relative pose)?
+- Target space: the open = 0 / closed = 1 targets are the default now. Is a second, radian head worth it?
 - Wrist joints: CyberGlove has wrist flex/deviation, MediaPipe does not. Do we want wrist outputs?
 - Licenses: NinaPro asks for citation; check redistribution before sharing the built data outside the team.
