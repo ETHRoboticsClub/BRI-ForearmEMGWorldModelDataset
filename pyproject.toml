@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dvc = ["dvc[s3]>=3.50"]
+viz = ["matplotlib>=3.7", "mujoco>=3.3", "mujoco-menagerie>=2026.10", "mjviser>=0.0.17"]  # scripts/compare_datasets.py, scripts/view_hand.py
 dev = ["pytest>=8", "ruff>=0.5", "pre-commit>=3"]
 
 [tool.setuptools.packages.find]

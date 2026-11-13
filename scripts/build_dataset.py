@@ -1,14 +1,3 @@
-"""PHASE 2: turn the raw files of data/raw into the common format in data/processed.
-
-    python scripts/build_dataset.py                                # every dataset in params.yaml
-    python scripts/build_dataset.py --dataset emg_fk --percent 10  # the first 10% of the subjects
-    python scripts/build_dataset.py --overwrite                    # rebuild sessions that already exist
-
-For every subject:  load each session (Dataset) -> process it (Processor) -> save it (femg.save).
-Processing settings come from params.yaml. Subjects that are not downloaded yet are skipped
-(run scripts/pull_data.py first). Sessions already built with the same settings are skipped too.
-"""
-
 import argparse
 import os
 import sys
