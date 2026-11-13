@@ -44,6 +44,8 @@ On a big CPU machine next to the bucket: `sky launch -c femg-build sky/build.yam
 
 ## How a session is processed
 
+![processing](docs/diagrams/processing.svg)
+
 `build_dataset.py` runs this for every session:
 
 ```python
@@ -66,17 +68,38 @@ To change the build, subclass `Processor`, override or add steps, register it in
 The output has one folder per session (`emg.npy` (T, C) volts, `kin.npy` (T/r, 22) radians/NaN,
 `stimulus.npy`, `meta.json`), plus `<dataset>/sessions.parquet`. See `src/femg/save.py` for details.
 
+## Normalization
+
+![normalization](docs/diagrams/normalization.svg)
+
+Diagrams live in `docs/diagrams/`: one [Typst](https://typst.app) + CeTZ file per diagram (synthetic signals drawn
+inside each step), sharing `style.typ`. After editing one, render it with
+`python -c "import typst; typst.compile('docs/diagrams/<name>.typ', output='docs/diagrams/<name>.svg')"` (or `.pdf`).
+
+## Explore the data
+
+```bash
+pip install -e ".[explorer]"     # once; Node.js is needed too (the dashboard builds itself on first launch)
+python -m tools.explorer         # http://127.0.0.1:8080 (--host 0.0.0.0 for other machines, --no-hand without MuJoCo)
+```
+
+A dashboard over `data/processed`: pick a session, scroll the EMG (min/max per pixel + 100 ms RMS, µV or ÷ active,
+ring8 or all channels), the joints (rad or 0-1) and the instructed movements on one time axis, and play it while the
+Shadow Hand (mjviser, port 8081) moves in sync. Backend: `tools/explorer/` (FastAPI, memory-mapped sessions, one value
+per pixel). Frontend: `tools/explorer/front/` (React + Tailwind, same look as neocoral-studio); for live reload run
+`python -m tools.explorer --no-build` and `npm run dev` in `tools/explorer/front`.
+
 ## Inspect the data
 
 ```bash
 pip install -e ".[viz]"
-python scripts/compare_datasets.py                          # output/compare/{emg,kin}.png
+python scripts/compare_datasets.py                          # output/compare/{emg,hand}.png + PASS/FAIL table
 python scripts/view_hand.py data/processed/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
 ```
 
-- `compare_datasets.py`: each dataset next to all of them pooled. `emg.png` shows the ring8 RMS per scenario (all,
-  still, moving, open, closed hand: defined from the kinematics with per-session percentiles), raw in µV and divided
-  by `calib_rms`. `kin.png` shows the range of every canonical joint.
+- `compare_datasets.py`: each dataset against the pool, percentile by percentile, within the same scenario (rest,
+  hold, moving: defined from the hand, `src/femg/normalize.py`). `emg.png`: ring8 RMS raw (µV) and normalized
+  (/ `active`). `hand.png`: hand flexion, speed and movement bout duration. The table gates a dataset at p10..p90.
 - `view_hand.py`: plays a session's `kin.npy` on the menagerie Shadow Hand (right) in the browser (mjviser), with the
   canonical name and angle on every joint, and play/pause/step/speed controls.
 

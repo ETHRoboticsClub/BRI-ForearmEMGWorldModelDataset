@@ -5,18 +5,30 @@ from femg.signal_utils import causal_filter, emg_stats, kin_stats, pick_nearest,
 
 
 class Processor:
-    def __init__(self, fs=500, label_fs=100, highpass=10, notch=True, calib_s=30):
+    def __init__(
+        self,
+        fs=500,
+        label_fs=100,
+        highpass=10,
+        notch=True,
+        calib_s=30,
+        rms_window_s=0.1,
+        emg_anchors=(10, 95),
+        kin_anchors=(2, 98),
+    ):
         if fs % label_fs != 0:
             raise ValueError(f"fs ({fs}) must be a multiple of label_fs ({label_fs})")
-        self.fs = fs  # common EMG rate (Hz)
-        self.label_fs = label_fs  # common kinematics rate (Hz)
-        self.highpass = highpass  # high-pass cut-off (Hz), None = off
-        self.notch = notch  # remove mains noise at the dataset's mains_hz
-        self.calib_s = calib_s  # seconds used for the calib_rms normalization stat
-        self.ratio = int(fs // label_fs)  # EMG samples per label
+        self.fs = fs
+        self.label_fs = label_fs
+        self.highpass = highpass
+        self.notch = notch
+        self.calib_s = calib_s
+        self.rms_window_s = rms_window_s
+        self.emg_anchors = list(emg_anchors)
+        self.kin_anchors = list(kin_anchors)
+        self.emg_per_label = int(fs // label_fs)
 
     def settings(self) -> dict:
-        """Stored in meta.json. A session built with different settings is rebuilt."""
         return {
             "processor": type(self).__name__,
             "fs": self.fs,
@@ -24,10 +36,13 @@ class Processor:
             "highpass": self.highpass,
             "notch": self.notch,
             "calib_s": self.calib_s,
+            "rms_window_s": self.rms_window_s,
+            "emg_anchors": self.emg_anchors,
+            "kin_anchors": self.kin_anchors,
         }
 
     def process(self, session, dataset):
-        session = self.resample_emg(session)  # first, so the filter runs on fewer samples
+        session = self.resample_emg(session)  # before filtering: fewer samples to filter
         session = self.filter_emg(session, dataset.mains_hz)
         session = self.resample_labels(session)
         session = self.align_labels(session, dataset.kin_lag_s)
@@ -45,9 +60,8 @@ class Processor:
         return session
 
     def resample_labels(self, session):
-        """Bring kin and stimulus to label_fs. Missing ones become NaN / -1 so every session has both."""
         if session.kin is None:
-            session.kin = np.full((len(session.emg) // self.ratio, N_JOINTS), np.nan, np.float32)
+            session.kin = np.full((len(session.emg) // self.emg_per_label, N_JOINTS), np.nan, np.float32)
         else:
             session.kin = resample_with_nans(session.kin, session.kin_fs, self.label_fs)
 
@@ -60,30 +74,28 @@ class Processor:
         return session
 
     def align_labels(self, session, kin_lag_s):
-        """Correct the dataset's lag, then crop so that label k matches EMG sample k * ratio.
-
-        kin_lag_s > 0 means kin[k] describes the hand kin_lag_s after its timestamp, so we drop the start of the EMG.
-        """
-        lag = round(kin_lag_s * self.label_fs)  # in labels
+        lag = round(kin_lag_s * self.label_fs)  # > 0: kin[k] shows the hand kin_lag_s after its timestamp
         if lag > 0:
-            session.emg = session.emg[lag * self.ratio :]
+            session.emg = session.emg[lag * self.emg_per_label :]
         elif lag < 0:
             session.kin = session.kin[-lag:]
             session.stimulus = session.stimulus[-lag:]
 
-        n = min(len(session.emg) // self.ratio, len(session.kin), len(session.stimulus))
-        session.emg = session.emg[: n * self.ratio]
+        n = min(len(session.emg) // self.emg_per_label, len(session.kin), len(session.stimulus))
+        session.emg = session.emg[: n * self.emg_per_label]
         session.kin = session.kin[:n]
         session.stimulus = session.stimulus[:n]
         return session
 
     def add_stats(self, session):
-        session.info["emg_stats"] = emg_stats(session.emg, self.fs, self.calib_s)
-        session.info["kin_stats"] = kin_stats(session.kin)
+        window = max(1, round(self.rms_window_s * self.label_fs))
+        session.info["emg_stats"] = emg_stats(
+            session.emg, self.fs, self.calib_s, self.emg_per_label, window, self.emg_anchors
+        )
+        session.info["kin_stats"] = kin_stats(session.kin, self.kin_anchors)
         return session
 
 
-# Processors selectable with `processor.name` in params.yaml.
 PROCESSORS = {
     "default": Processor,
 }

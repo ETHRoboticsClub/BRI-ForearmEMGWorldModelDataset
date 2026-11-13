@@ -15,7 +15,6 @@ GB_PER_WORKER = 2.0  # peak RAM of one session (largest: NinaPro DB8 A1, a ~1 GB
 
 
 def build_subject(dataset, subject, processor, raw_dir: Path, out_dir: Path, overwrite: bool) -> int:
-    """Load, process and save every session of one subject. Returns the number of failed sessions."""
     n_failed = 0
     for session_name in dataset.sessions(subject):
         folder = session_folder(out_dir, dataset.name, subject, session_name)
@@ -35,7 +34,6 @@ def build_subject(dataset, subject, processor, raw_dir: Path, out_dir: Path, ove
 
 
 def build_dataset(dataset, processor, percent, raw_dir: Path, out_dir: Path, workers: int, overwrite: bool) -> int:
-    """Build the selected subjects of one dataset. Returns the number of failed sessions."""
     if dataset.effective_fs < processor.fs:
         print(f"[{dataset.name}] skipped: its effective rate {dataset.effective_fs} Hz is below fs={processor.fs}")
         return 0
@@ -61,7 +59,6 @@ def build_dataset(dataset, processor, percent, raw_dir: Path, out_dir: Path, wor
 
 
 def auto_workers() -> int:
-    """As many workers as CPUs and free RAM allow."""
     cpus = os.cpu_count() or 1
     try:
         meminfo = Path("/proc/meminfo").read_text().splitlines()
@@ -73,7 +70,7 @@ def auto_workers() -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Build data/processed/<dataset>/ from data/raw (resumable).")
     parser.add_argument("--params", default="params.yaml")
     parser.add_argument("--dataset", action="append", choices=list(DATASETS), help="repeatable; default: params")
     parser.add_argument("--percent", type=float, help="percentage of subjects per dataset; default: params")

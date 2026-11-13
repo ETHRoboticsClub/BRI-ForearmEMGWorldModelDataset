@@ -1,43 +1,33 @@
-"""The common label space: every dataset maps its hand kinematics onto these 22 joints.
-
-Units: radians. Flexion > 0, 0 = fully extended (anatomical neutral). Abductions are spreads between neighbouring
-fingers (> 0 = spread). Joints a dataset does not measure are NaN and get masked out of the loss.
-"""
-
+# Right hand, radians. 0 = extended; flexion and finger spread > 0; wrist_dev > 0 = radial. NaN = not measured.
 CANONICAL_JOINTS = [
-    "thumb_cmc_flex",  # 0  thumb rotation/opposition across the palm
-    "thumb_cmc_abd",  # 1  thumb-index spread
-    "thumb_mcp_flex",  # 2
-    "thumb_ip_flex",  # 3
-    "index_mcp_flex",  # 4
-    "index_pip_flex",  # 5
-    "index_dip_flex",  # 6
-    "middle_mcp_flex",  # 7
-    "middle_pip_flex",  # 8
-    "middle_dip_flex",  # 9
-    "ring_mcp_flex",  # 10
-    "ring_pip_flex",  # 11
-    "ring_dip_flex",  # 12
-    "pinky_mcp_flex",  # 13
-    "pinky_pip_flex",  # 14
-    "pinky_dip_flex",  # 15
-    "index_middle_abd",  # 16
-    "middle_ring_abd",  # 17
-    "ring_pinky_abd",  # 18
-    "palm_arch",  # 19
-    "wrist_flex",  # 20
-    "wrist_dev",  # 21 radial (+) / ulnar (-) deviation
+    "thumb_cmc_flex",  # thumb rotation across the palm
+    "thumb_cmc_abd",
+    "thumb_mcp_flex",
+    "thumb_ip_flex",
+    "index_mcp_flex",
+    "index_pip_flex",
+    "index_dip_flex",
+    "middle_mcp_flex",
+    "middle_pip_flex",
+    "middle_dip_flex",
+    "ring_mcp_flex",
+    "ring_pip_flex",
+    "ring_dip_flex",
+    "pinky_mcp_flex",
+    "pinky_pip_flex",
+    "pinky_dip_flex",
+    "index_middle_abd",
+    "middle_ring_abd",
+    "ring_pinky_abd",
+    "palm_arch",
+    "wrist_flex",
+    "wrist_dev",
 ]
 N_JOINTS = len(CANONICAL_JOINTS)
-JOINT_INDEX = {name: i for i, name in enumerate(CANONICAL_JOINTS)}  # "index_mcp_flex" -> 4
+JOINT_INDEX = {name: i for i, name in enumerate(CANONICAL_JOINTS)}
 
-# Allowed values of session.info["label_source"]: how the kinematic targets were obtained.
-#   "measured": sensor on the same hand as the EMG
-#   "mirrored": sensor on the other hand doing mirrored movements (works for amputees)
-#   "cue":      only the instructed movement (stimulus), no kinematics
+# measured: sensor on the EMG hand; mirrored: sensor on the other hand doing the same movement; cue: stimulus only
 LABEL_SOURCES = ["measured", "mirrored", "cue"]
 
-# Allowed values of session.info["kin_units"]:
-#   "rad":              calibrated joint angles
-#   "rad_uncalibrated": proportional to the angle, gain/offset differ per session (raw CyberGlove)
+# rad_uncalibrated: proportional to the angle, with a per-session gain and offset (raw CyberGlove)
 KIN_UNITS = ["rad", "rad_uncalibrated"]

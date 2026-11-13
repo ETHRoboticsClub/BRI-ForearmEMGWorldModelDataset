@@ -4,121 +4,139 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import uniform_filter1d
 
-from femg.joints import CANONICAL_JOINTS, JOINT_INDEX
+from femg.normalize import bouts, hand_flexion, hand_speed, normalize_emg, normalize_kin, scenarios
+from femg.signal_utils import envelope
 
-FINGERS = [JOINT_INDEX[f"{f}_{j}_flex"] for f in ["index", "middle", "ring", "pinky"] for j in ["mcp", "pip"]]
-SMOOTH = 10  # label frames (100 ms) for the RMS and the hand speed
+PERCENTILES = np.arange(1, 100)
+CHECKED = (PERCENTILES >= 10) & (PERCENTILES <= 90)
+SCENARIOS = ["all", "rest", "hold", "moving"]
+COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#eda100"]
+POOL_COLOR = "#5f5e5a"
+
+# metric: (y label, log scale, deviation kind, tolerance); kind None = plotted only
+METRICS = {
+    **{f"raw|{s}": ("ring8 RMS (µV)", True, None, None) for s in SCENARIOS},
+    "emg|all": ("ring8 RMS / active", True, None, None),
+    **{f"emg|{s}": ("ring8 RMS / active", True, "ratio", 0.25) for s in SCENARIOS[1:]},
+    "flexion": ("hand flexion (0 open, 1 closed)", False, "difference", 0.10),
+    "speed": ("hand speed while moving (flexion / s)", True, "ratio", 0.25),
+    "bout": ("movement bout duration (s)", True, "ratio", 0.25),
+}
 
 
-def scenarios(kin: np.ndarray) -> dict[str, np.ndarray]:
-    """Boolean mask over label frames for every scenario."""
-    flexion = np.nanmean(kin[:, FINGERS], axis=1)  # how closed the hand is
-    speed = uniform_filter1d(np.abs(np.gradient(flexion)), SMOOTH)  # how fast it closes/opens
-    p = lambda x, q: np.nanpercentile(x, q)  # noqa: E731
-    return {
-        "all": np.ones(len(kin), bool),
-        "still": speed <= p(speed, 25),
-        "moving": speed >= p(speed, 75),
-        "open": flexion <= p(flexion, 10),
-        "closed": flexion >= p(flexion, 90),
-    }
-
-
-def load_session(folder: Path) -> dict:
-    """Per label frame: ring8 RMS (µV), the same RMS / calib_rms, the joints, and the scenario masks."""
+def load_session(folder: Path) -> dict[str, np.ndarray]:
     meta = json.loads((folder / "meta.json").read_text())
-    ring = meta["montages"]["ring8"]
-    kin = np.load(folder / "kin.npy")
+    ring, label_fs = meta["montages"]["ring8"], meta["label_fs"]
+    window = round(meta["processor"]["rms_window_s"] * label_fs)
+
     emg = np.load(folder / "emg.npy", mmap_mode="r")[:, ring]
-    ratio = meta["fs"] // meta["label_fs"]
-    power = (emg[: len(kin) * ratio] ** 2).reshape(len(kin), ratio, len(ring)).mean(axis=1)
-    rms = np.sqrt(uniform_filter1d(power, SMOOTH, axis=0))  # (frames, 8) volts
-    calib = np.asarray(meta["emg_stats"]["calib_rms"])[ring]
-    return {
-        "raw": rms.mean(axis=1) * 1e6,
-        "norm": (rms / calib).mean(axis=1),
-        "kin": kin,
-        "masks": scenarios(kin),
-    }
+    rms = envelope(emg, meta["fs"] // label_fs, window)
+    raw_uv = rms.mean(axis=1) * 1e6
+    normalized = normalize_emg(rms, meta["emg_stats"], ring).mean(axis=1)
+
+    kin = normalize_kin(np.load(folder / "kin.npy"), meta["kin_stats"])
+    flexion = hand_flexion(kin)
+    speed = hand_speed(flexion, label_fs, window)
+    masks = scenarios(flexion, speed)
+
+    metrics = {}
+    for s in SCENARIOS:
+        metrics[f"raw|{s}"] = raw_uv[masks[s]]
+        metrics[f"emg|{s}"] = normalized[masks[s]]
+    metrics["flexion"] = flexion
+    metrics["speed"] = speed[masks["moving"]]
+    metrics["bout"] = bouts(masks["moving"], label_fs)
+    return metrics
 
 
-def load_dataset(folder: Path, max_frames: int = 200_000) -> dict:
-    """All sessions of a dataset concatenated, subsampled to max_frames so every dataset weighs the same."""
+def load_dataset(folder: Path) -> dict[str, np.ndarray]:
     sessions = [load_session(meta.parent) for meta in sorted(folder.glob("*/*/meta.json"))]
-    data = {k: np.concatenate([s[k] for s in sessions]) for k in ["raw", "norm", "kin"]}
-    data["masks"] = {k: np.concatenate([s["masks"][k] for s in sessions]) for k in sessions[0]["masks"]}
-    keep = np.random.default_rng(0).permutation(len(data["kin"]))[:max_frames]
-    return {k: (v[keep] if k != "masks" else {m: x[keep] for m, x in v.items()}) for k, v in data.items()}
+    return {metric: np.concatenate([s[metric] for s in sessions]) for metric in METRICS}
 
 
-def pool(datasets: dict) -> dict:
-    first = next(iter(datasets.values()))
-    pooled = {k: np.concatenate([d[k] for d in datasets.values()]) for k in ["raw", "norm", "kin"]}
-    pooled["masks"] = {m: np.concatenate([d["masks"][m] for d in datasets.values()]) for m in first["masks"]}
-    return pooled
+def equal_weight_pool(values: dict[str, np.ndarray], rng) -> np.ndarray:
+    n = min(len(v) for v in values.values())
+    return np.concatenate([rng.choice(v, n, replace=False) for v in values.values()])
 
 
-def grouped_boxes(ax, groups: list[str], values: dict[str, list[np.ndarray]], colors: dict[str, str]):
-    """One box per (group, dataset): whiskers at the 1st and 99th percentiles, no outliers."""
-    width = 0.8 / len(values)
-    for i, (name, series) in enumerate(values.items()):
-        positions = np.arange(len(groups)) + (i - (len(values) - 1) / 2) * width
-        series = [x[np.isfinite(x)] if np.isfinite(x).any() else [np.nan] for x in series]
-        box = ax.boxplot(
-            series,
-            positions=positions,
-            widths=width * 0.85,
-            whis=(1, 99),
-            showfliers=False,
-            patch_artist=True,
-            medianprops={"color": "black"},
-        )
-        for patch in box["boxes"]:
-            patch.set(facecolor=colors[name], edgecolor=colors[name], alpha=0.8)
-        ax.plot([], [], "s", color=colors[name], label=name)
-    ax.set_xticks(range(len(groups)), groups)
-    ax.grid(axis="y", alpha=0.3)
+def percentile_curves(datasets: dict) -> dict[str, dict[str, np.ndarray]]:
+    rng = np.random.default_rng(0)
+    curves = {}
+    for metric in METRICS:
+        values = {name: d[metric][np.isfinite(d[metric])] for name, d in datasets.items()}
+        values["all"] = equal_weight_pool(values, rng)
+        curves[metric] = {name: np.percentile(v, PERCENTILES) for name, v in values.items()}
+    return curves
+
+
+def deviation(curve: np.ndarray, pool: np.ndarray, kind: str) -> float:
+    if kind == "ratio":
+        return float(np.max(np.abs(curve[CHECKED] / pool[CHECKED] - 1)))
+    return float(np.max(np.abs(curve[CHECKED] - pool[CHECKED])))
+
+
+def plot_curves(ax, curves: dict, colors: dict, metric: str):
+    label, log, _, _ = METRICS[metric]
+    for name, curve in curves.items():
+        pooled = name == "all"
+        ax.plot(PERCENTILES, curve, label=name, color=colors[name], lw=1.5 if pooled else 2, ls="--" if pooled else "-")
+    ax.axvspan(10, 90, color="0.5", alpha=0.06)
+    ax.set(xlabel="percentile", ylabel=label, yscale="log" if log else "linear")
+    ax.grid(alpha=0.3)
+
+
+def plot_emg(curves, colors, path: Path):
+    fig, axes = plt.subplots(2, len(SCENARIOS), figsize=(4 * len(SCENARIOS), 7), sharey="row")
+    for col, scenario in enumerate(SCENARIOS):
+        plot_curves(axes[0, col], curves[f"raw|{scenario}"], colors, f"raw|{scenario}")
+        plot_curves(axes[1, col], curves[f"emg|{scenario}"], colors, f"emg|{scenario}")
+        axes[0, col].set_title(scenario)
+    axes[0, 0].legend(frameon=False)
+    fig.suptitle("EMG amplitude percentiles: raw (top), / active (bottom); shaded = checked range")
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+
+
+def plot_hand(curves, colors, path: Path):
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    for ax, metric in zip(axes, ["flexion", "speed", "bout"], strict=True):
+        plot_curves(ax, curves[metric], colors, metric)
+    axes[0].legend(frameon=False)
+    fig.suptitle("Hand movement percentiles (0 = open, 1 = closed)")
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+
+
+def print_acceptance(curves, names: list[str]):
+    print(f"worst deviation from the pool over p10..p90\n{'':22}" + "".join(f"{n:>16}" for n in names))
+    for metric, (_, _, kind, tolerance) in METRICS.items():
+        if kind is None:
+            continue
+        cells = []
+        for name in names:
+            dev = deviation(curves[metric][name], curves[metric]["all"], kind)
+            value = f"{dev:.0%}" if kind == "ratio" else f"{dev:.2f}"
+            cells.append(f"{value} {'PASS' if dev <= tolerance else 'FAIL'}")
+        print(f"{metric + f' (≤{tolerance:g})':22}" + "".join(f"{c:>16}" for c in cells))
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Compare datasets percentile by percentile, per scenario.")
     parser.add_argument("--data", type=Path, default=Path("data/processed"))
     parser.add_argument("--datasets", nargs="+", help="default: every folder in --data")
     parser.add_argument("--out", type=Path, default=Path("output/compare"))
     args = parser.parse_args()
 
     names = args.datasets or sorted(p.name for p in args.data.iterdir() if p.is_dir())
-    datasets = {name: load_dataset(args.data / name) for name in names}
-    datasets["all"] = pool(datasets)
-    palette = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#eda100"]
-    colors = {name: palette[i] for i, name in enumerate(names)} | {"all": "#8a8985"}
+    curves = percentile_curves({name: load_dataset(args.data / name) for name in names})
+    colors = {name: COLORS[i] for i, name in enumerate(names)} | {"all": POOL_COLOR}
+
     args.out.mkdir(parents=True, exist_ok=True)
-
-    # 1. EMG amplitude per scenario
-    groups = list(datasets["all"]["masks"])
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
-    for ax, key, label in [(axes[0], "raw", "ring8 RMS (µV, log)"), (axes[1], "norm", "ring8 RMS / calib_rms")]:
-        values = {n: [d[key][d["masks"][g]] for g in groups] for n, d in datasets.items()}
-        grouped_boxes(ax, groups, values, colors)
-        ax.set(yscale="log" if key == "raw" else "linear", ylabel=label, xlabel="scenario")
-    axes[0].legend(frameon=False, loc="lower left")
-    fig.suptitle("EMG amplitude per scenario (100 ms RMS, mean over the 8 ring channels)")
-    fig.tight_layout()
-    fig.savefig(args.out / "emg.png", dpi=130)
-
-    # 2. Joint angles
-    fig, ax = plt.subplots(figsize=(15, 4.5))
-    values = {n: [d["kin"][:, j] for j in range(len(CANONICAL_JOINTS))] for n, d in datasets.items()}
-    grouped_boxes(ax, CANONICAL_JOINTS, values, colors)
-    ax.set_xticks(range(len(CANONICAL_JOINTS)), CANONICAL_JOINTS, rotation=60, ha="right")
-    ax.set(ylabel="angle (rad)", ylim=(-1.5, 3.5))  # clipped: a glove glitch can reach ±10 rad
-    ax.set_title("Joint angles (whiskers: 1st-99th percentile; empty = not measured; y clipped to [-1.5, 3.5])")
-    ax.legend(frameon=False, ncol=len(datasets))
-    fig.tight_layout()
-    fig.savefig(args.out / "kin.png", dpi=130)
-    print(f"saved {args.out}/emg.png and {args.out}/kin.png")
+    plot_emg(curves, colors, args.out / "emg.png")
+    plot_hand(curves, colors, args.out / "hand.png")
+    print_acceptance(curves, names)
+    print(f"\nsaved {args.out}/emg.png and {args.out}/hand.png")
 
 
 if __name__ == "__main__":

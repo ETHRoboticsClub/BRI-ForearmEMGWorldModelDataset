@@ -1,5 +1,3 @@
-"""EMG-FK: 8-channel dry armband + MediaPipe finger angles (Colot et al. 2026). One session per subject."""
-
 from pathlib import Path
 
 import numpy as np
@@ -32,10 +30,8 @@ MD5 = {
     20: "3e64b600e7e7617b19666ec2ad8b997c",
 }
 
-# "Angle 1..15": MediaPipe relative angles between consecutive landmark triplets, in degrees, 180 = straight.
-# The order is not documented; it is inferred from the correlation structure of Subject_01 (1-3 are independent
-# of the rest = thumb; 4-15 form four correlated triplets = index..pinky, MCP/PIP/DIP following MediaPipe's
-# landmark order). Verify against figures/figure_angles.png of the authors' repo before trusting per-joint metrics.
+# "Angle 1..15" (MediaPipe, degrees, 180 = straight). Order not documented: inferred from correlations on
+# Subject_01. To confirm with figures/figure_angles.png of the authors' repo.
 ANGLES = [
     "thumb_cmc_flex",
     "thumb_mcp_flex",
@@ -65,10 +61,9 @@ class EMGFK(Dataset):
     native_fs = 500.0
     effective_fs = 500.0
     mains_hz = 50.0  # recorded in Belgium
-    emg_unit_scale = 1e-6  # files claim volts but values are ~60 (std): microvolts, consistent with NinaPro levels
+    emg_unit_scale = 1e-6  # files say volts, but std ~60 means microvolts
     montages = {"ring8": list(range(8))}
-    # Zenodo: "a constant shift of approximately 300 ms can be observed between the two signal types".
-    # Direction not documented: estimate it (docs/data-spec.md, roadmap) before setting it here.
+    # Zenodo reports a ~300 ms shift between EMG and angles, direction unknown: to estimate (roadmap)
     kin_lag_s = 0.0
     verified = {
         "angle_order": "inferred from correlations, not confirmed",
@@ -95,7 +90,6 @@ class EMGFK(Dataset):
         emg = raw.get_data(picks=[f"EMG {i}" for i in range(1, 9)]).T.astype(np.float32) * self.emg_unit_scale
         angles = raw.get_data(picks=[f"Angle {i}" for i in range(1, 16)]).T.astype(np.float32)
 
-        # MediaPipe gives 180 deg for a straight joint; canonical joints are 0 rad when straight.
         kin = np.full((len(angles), N_JOINTS), np.nan, np.float32)
         for column, joint in enumerate(ANGLES):
             kin[:, JOINT_INDEX[joint]] = np.deg2rad(180.0 - angles[:, column])
