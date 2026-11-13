@@ -197,6 +197,13 @@ def is_below(model, body: int, ancestor: int) -> bool:
     return False
 
 
+def rotation(axis: np.ndarray, angle: float) -> np.ndarray:
+    """Rotation matrix about a unit axis (Rodrigues)."""
+    x, y, z = axis
+    k = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+    return np.eye(3) + np.sin(angle) * k + (1 - np.cos(angle)) * k @ k
+
+
 def unit_vector(v):
     return v / (np.linalg.norm(v) or 1.0)
 
@@ -231,6 +238,10 @@ class HandScene:
         self.model, self.data, self.ids = self.hand.load()
         self.scene = ViserMujocoScene(self.server, self.model, num_envs=1)
         self.scene.show_tendons = False  # musculoskeletal hands (MyoHand): show the bones, not the muscles
+        add_frame = self.server.scene.add_frame
+        groups = [add_frame(name, show_axes=False) for name in ("/bodies", "/hull", "/decor", "/labels")]
+        self.frames = [self.scene.fixed_bodies_frame, *groups]
+        self.turn = np.eye(3)
         self.point_camera()
         self.pivots = self.group_by_pivot()
         self.labels = [
@@ -254,6 +265,7 @@ class HandScene:
         reach = float(np.linalg.norm(fingertips - knuckles)) + 0.02
         position = center + 3.0 * reach * unit_vector(1.4 * palmar + 0.6 * radial - 0.3 * distal)
         self.camera = (position, center, distal)
+        self.pivot = center
         self.server.initial_camera.position, self.server.initial_camera.look_at = tuple(position), tuple(center)
         self.server.initial_camera.up = tuple(distal)
         for client in self.server.get_clients().values():
@@ -267,6 +279,44 @@ class HandScene:
             client.camera.position, client.camera.look_at = position, center
         except AssertionError:
             pass
+
+    def orbit(self, right: float, up: float):
+        """Trackball: turn the hand itself about the viewer's vertical and horizontal axes (rad). The camera stays
+        still, so viser's orbit limits (stuck at the poles) never come into play."""
+        clients = list(self.server.get_clients().values())
+        try:
+            camera = clients[0].camera
+            forward = unit_vector(np.asarray(camera.look_at) - np.asarray(camera.position))
+            top = np.asarray(camera.up_direction, float)
+        except (IndexError, AssertionError):
+            return
+        side = unit_vector(np.cross(forward, top))
+        top = np.cross(side, forward)
+        self.turn = rotation(top, right) @ rotation(side, up) @ self.turn
+        self.apply_turn()
+
+    def apply_turn(self):
+        """Rotate the whole hand (all of mjviser's scene groups and the labels) by self.turn about its center."""
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, self.turn.flatten())
+        shift = self.pivot - self.turn @ self.pivot
+        for frame in self.frames:
+            frame.wxyz, frame.position = quat, shift
+
+    def zoom(self, factor: float):
+        for client in self.server.get_clients().values():
+            try:
+                target = np.asarray(client.camera.look_at)
+                client.camera.position = target + factor * (np.asarray(client.camera.position) - target)
+                client.camera.look_at = target
+            except AssertionError:
+                pass
+
+    def reset_view(self):
+        self.turn = np.eye(3)
+        self.apply_turn()
+        for client in self.server.get_clients().values():
+            self.aim(client)
 
     def prepare_client(self, client):
         self.aim(client)
@@ -292,6 +342,7 @@ class HandScene:
         set_pose(self.model, self.data, self.hand, self.ids, kin_row, unit, centers)
         how = self.hand.angles(kin_row, unit, centers)
         self.scene.update_from_mjdata(self.data)
+        self.scene.fixed_bodies_frame.position = self.pivot - self.turn @ self.pivot  # mjviser resets it on update
         for label, rules in zip(self.labels, self.pivots, strict=True):
             label.position = self.data.xanchor[self.ids[rules[0].joint]]
             label.text = "  ".join(t for r in rules if (t := label_text(r, kin_row, unit, how[r.joint][1])))

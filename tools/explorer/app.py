@@ -90,6 +90,12 @@ def create_app(data: Path, hand_port: int | None, host: str = "127.0.0.1") -> Fa
                     hand.set_theme(message["dark"])
                 if "labels" in message:
                     hand.show_labels(message["labels"])
+                if "orbit" in message:
+                    hand.orbit(*message["orbit"])
+                if "zoom" in message:
+                    hand.zoom(message["zoom"])
+                if message.get("reset_view"):
+                    hand.reset_view()
                 if message.get("hand") in available_hands() and message["hand"] != hand.hand.name:
                     hand.switch(message["hand"])
                 if message.get("key") in store.folders:
