@@ -20,6 +20,8 @@ def main():
     args = parser.parse_args()
 
     meta = json.loads((args.session / "meta.json").read_text())
+    if not meta["measured_joints"]:
+        raise SystemExit(f"{meta['key']} has no kinematics ({meta['label_source']} labels only): nothing to show")
     stats = meta["kin_stats"]
     kin = np.load(args.session / "kin.npy")
     unit = not args.rad

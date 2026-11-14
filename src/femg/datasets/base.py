@@ -67,6 +67,21 @@ class Dataset:
         }
 
 
+def concat_trials(trials, emg_per_label: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[int]]:
+    """Joins short trials (emg (Te, C), kin (Tk, J), stimulus (Tk,)) end to end, each cut to whole label samples
+    (Te = emg_per_label * Tk). Also returns where every trial starts, in label samples: the joins are not continuous
+    in time, so the first ~100 ms after each one carry the high-pass transient."""
+    emgs, kins, stimuli, starts, at = [], [], [], [], 0
+    for emg, kin, stimulus in trials:
+        n = min(len(emg) // emg_per_label, len(kin), len(stimulus))
+        emgs.append(emg[: n * emg_per_label])
+        kins.append(kin[:n])
+        stimuli.append(stimulus[:n])
+        starts.append(at)
+        at += n
+    return np.concatenate(emgs), np.concatenate(kins), np.concatenate(stimuli), starts
+
+
 def first_percent(subjects: list[str], percent: float) -> list[str]:
     """At least one subject. Nested: the 10% subjects are also in the 30%."""
     if not 0 < percent <= 100:

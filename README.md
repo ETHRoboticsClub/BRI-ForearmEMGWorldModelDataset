@@ -35,7 +35,7 @@ python scripts/build_dataset.py --dataset emg_fk --percent 10  # 2. process them
 - Raw data is not versioned (it can be downloaded again). `data/processed` is versioned with DVC:
 
 ```bash
-python scripts/pull_data.py                      # all raw data (~40 GB)
+python scripts/pull_data.py                      # all raw data (~140 GB: SEEDS ~60, DB7 ~34)
 dvc repro                                        # full build, one stage per dataset (params.yaml)
 dvc push && git add dvc.lock && git commit       # share it
 ```
@@ -84,7 +84,7 @@ python -m tools.explorer         # http://127.0.0.1:8080 (--host 0.0.0.0 for oth
 ```
 
 A dashboard over `data/processed`: pick a session, scroll the EMG (min/max per pixel + 100 ms RMS, µV or ÷ active,
-ring8 or all channels), the joints (rad or 0-1) and the instructed movements on one time axis, and play it while the
+ring8 (or the dataset's small montage when it has no ring) or all channels), the joints (rad or 0-1) and the instructed movements on one time axis, and play it while the
 Shadow Hand (mjviser, port 8081) moves in sync. Backend: `tools/explorer/` (FastAPI, memory-mapped sessions, one value
 per pixel). Frontend: `tools/explorer/front/` (React + Tailwind, same look as neocoral-studio); for live reload run
 `python -m tools.explorer --no-build` and `npm run dev` in `tools/explorer/front`.
@@ -94,12 +94,15 @@ per pixel). Frontend: `tools/explorer/front/` (React + Tailwind, same look as ne
 ```bash
 pip install -e ".[viz]"
 python scripts/compare_datasets.py                          # output/compare/{emg,hand}.png + PASS/FAIL table
+python scripts/check_signs.py                               # joint signs vs instructed movements (exit 1 if wrong)
 python scripts/view_hand.py data/processed/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
 ```
 
 - `compare_datasets.py`: each dataset against the pool, percentile by percentile, within the same scenario (rest,
   hold, moving: defined from the hand, `src/femg/normalize.py`). `emg.png`: ring8 RMS raw (µV) and normalized
   (/ `active`). `hand.png`: hand flexion, speed and movement bout duration. The table gates a dataset at p10..p90.
+- `check_signs.py`: every reader must deliver flexion / spread / radial > 0 (`src/femg/joints.py`), or the hands move
+  the wrong way. It checks this on movements of known direction (NinaPro E1, SEEDS, GREAT).
 - `view_hand.py`: plays a session's `kin.npy` on the menagerie Shadow Hand (right) in the browser (mjviser), with the
   canonical name and angle on every joint, and play/pause/step/speed controls.
 

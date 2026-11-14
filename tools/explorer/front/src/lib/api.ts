@@ -20,6 +20,8 @@ export interface Details extends Summary {
   fs: number
   label_fs: number
   montages: Record<string, number[]>
+  display_montage: string
+  stimulus_names: Record<string, string>
   joints: string[]
   measured_joints: number[]
   kin_lag_s: number

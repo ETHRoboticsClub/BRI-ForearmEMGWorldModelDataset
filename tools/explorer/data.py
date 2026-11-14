@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from femg.normalize import as_array, hand_flexion, normalize_kin
+from femg.normalize import as_array, display_montage, hand_flexion, has_kinematics, normalize_kin
 from femg.signal_utils import envelope
 
 OPEN_SESSIONS = 8
@@ -60,12 +60,15 @@ class Session:
         return (as_array(stats["mean"]) - as_array(stats["low"])) / (as_array(stats["high"]) - as_array(stats["low"]))
 
     def ring(self) -> list[int]:
-        return self.meta["montages"].get("ring8", list(range(self.meta["n_channels"])))
+        """The default channels: ring8, or the dataset's small montage when it has no ring (display_montage)."""
+        return display_montage(self.meta)[1]
 
     def details(self) -> dict:
         stimuli = sorted({int(s) for s in np.unique(self.stimulus)} - {0, -1})
         return {k: self.meta.get(k) for k in DETAILS} | {
+            "display_montage": display_montage(self.meta)[0],
             "stimuli": stimuli,
+            "stimulus_names": self.meta.get("stimulus_names", {}),
             "emg_stats": {k: self.meta["emg_stats"][k] for k in ("floor", "active")},
             "kin_stats": {k: self.meta["kin_stats"][k] for k in ("low", "high")},
         }
@@ -79,7 +82,7 @@ class Session:
         ring = self.ring()
         rms = envelope(self.emg[:, ring], self.emg_per_label, self.rms_frames).mean(axis=1)
         rms = rms / max(float(np.percentile(rms, 99)), 1e-12)
-        flexion = np.nan_to_num(hand_flexion(self.kin_unit))
+        flexion = np.nan_to_num(hand_flexion(self.kin_unit)) if has_kinematics(self.meta) else np.zeros(len(rms))
         step = max(1, len(rms) // points)
         return {
             "dt": step / self.label_fs,

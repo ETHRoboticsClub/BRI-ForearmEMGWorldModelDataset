@@ -50,6 +50,27 @@ glove's two thumb-base sensors do not mean what their names suggest:
 
 Swinging across the palm only shows once the thumb is lifted: with the thumb flat, Shadow's THJ5 just twists it.
 
+## The datasets
+
+A hand file serves every dataset: the dataset readers (`src/femg/datasets`) deliver the canonical convention of
+`src/femg/joints.py` (flexion, finger spread and radial deviation > 0; the thumb pair as above), so in 0-1 units
+1 is always flexed / spread / radial. Sensors that run the other way are flipped in the reader, from the instructed
+movements of each dataset:
+
+| Dataset | Flipped in the reader | Evidence |
+|---|---|---|
+| NinaPro DB2, DB7 (raw CyberGlove) | 3 spreads, `wrist_dev` | E1: abduction of all fingers < adduction (6/6 reps, 3 sessions), radial < ulnar (5/6) |
+| NinaPro DB8 (calibrated glove) | none | no spread or deviation movement to check: verify visually |
+| SEEDS (CyberGlove III, 0-1) | none | thumbFlex, index_flex, middle_flex; spreads and wrist not verifiable |
+| KIN-MUS UJI (anatomical angles) | thumb base: `thumb_cmc_flex` = CMC1_A, `thumb_cmc_abd` = −CMC1_F | paper Table 3 + grasping vs open hand (22/22 subjects) |
+| GREAT (raw CyberGlove) | none | open > rest on the 3 spreads, power raises thumb roll and lowers thumb abduction (4/4 sessions) |
+| NinaPro DB3, DB4 | no kinematics (cue only): the hand stays open | |
+
+`python scripts/check_signs.py` repeats these tests on `data/processed` and fails when a sign is wrong. Run it after
+changing a reader or adding a dataset (add its instructed movements to `TESTS`).
+
+SEEDS records the left forearm: its angles are shown on the right-hand models (same joint angles, mirrored hand).
+
 ## Add a hand
 
 1. Write the template (a mujoco-menagerie name or a builder `module:function`). It lists every joint with its limits

@@ -34,6 +34,7 @@ def main() -> None:
         files = []
         for subject in subjects:
             files += dataset.files_to_download(subject)
+        files = list({f.name: f for f in files}.values())  # shared files (e.g. KIN-MUS UJI) only once
         to_download = [f for f in files if not is_downloaded(f, folder)]
         n_subjects = f"{len(subjects)}/{len(dataset.subjects())}"
         print(f"[{name}] {n_subjects} subjects, {len(files)} files, {len(to_download)} to download")

@@ -5,20 +5,29 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from femg.normalize import bouts, hand_flexion, hand_speed, normalize_emg, normalize_kin, scenarios
+from femg.normalize import (
+    bouts,
+    display_montage,
+    hand_flexion,
+    hand_speed,
+    has_kinematics,
+    normalize_emg,
+    normalize_kin,
+    scenarios,
+)
 from femg.signal_utils import envelope
 
 PERCENTILES = np.arange(1, 100)
 CHECKED = (PERCENTILES >= 10) & (PERCENTILES <= 90)
 SCENARIOS = ["all", "rest", "hold", "moving"]
-COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#eda100"]
+COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#eda100", "#8a5cd1", "#1aa3b8", "#b5651d", "#6b8e23", "#d43f3a"]
 POOL_COLOR = "#5f5e5a"
 
 # metric: (y label, log scale, deviation kind, tolerance); kind None = plotted only
 METRICS = {
-    **{f"raw|{s}": ("ring8 RMS (µV)", True, None, None) for s in SCENARIOS},
-    "emg|all": ("ring8 RMS / active", True, None, None),
-    **{f"emg|{s}": ("ring8 RMS / active", True, "ratio", 0.25) for s in SCENARIOS[1:]},
+    **{f"raw|{s}": ("display montage RMS (µV)", True, None, None) for s in SCENARIOS},
+    "emg|all": ("display montage RMS / active", True, None, None),
+    **{f"emg|{s}": ("display montage RMS / active", True, "ratio", 0.25) for s in SCENARIOS[1:]},
     "flexion": ("hand flexion (0 open, 1 closed)", False, "difference", 0.10),
     "speed": ("hand speed while moving (flexion / s)", True, "ratio", 0.25),
     "bout": ("movement bout duration (s)", True, "ratio", 0.25),
@@ -26,14 +35,27 @@ METRICS = {
 
 
 def load_session(folder: Path) -> dict[str, np.ndarray]:
+    """EMG over the display montage (ring8, else the dataset's small montage). Sessions without kinematics (cue only)
+    give EMG only, with rest = instructed rest (stimulus 0) instead of still + open hand."""
     meta = json.loads((folder / "meta.json").read_text())
-    ring, label_fs = meta["montages"]["ring8"], meta["label_fs"]
+    ring, label_fs = display_montage(meta)[1], meta["label_fs"]
     window = round(meta["processor"]["rms_window_s"] * label_fs)
 
     emg = np.load(folder / "emg.npy", mmap_mode="r")[:, ring]
     rms = envelope(emg, meta["fs"] // label_fs, window)
     raw_uv = rms.mean(axis=1) * 1e6
     normalized = normalize_emg(rms, meta["emg_stats"], ring).mean(axis=1)
+
+    if not has_kinematics(meta):
+        stimulus = np.load(folder / "stimulus.npy")[: len(raw_uv)]
+        none = np.zeros(len(raw_uv), bool)
+        masks = {"all": ~none, "rest": stimulus == 0, "hold": none, "moving": none}
+        metrics = {
+            f"{kind}|{s}": values[masks[s]]
+            for s in SCENARIOS
+            for kind, values in [("raw", raw_uv), ("emg", normalized)]
+        }
+        return metrics | {"flexion": np.array([]), "speed": np.array([]), "bout": np.array([])}
 
     kin = normalize_kin(np.load(folder / "kin.npy"), meta["kin_stats"])
     flexion = hand_flexion(kin)
@@ -65,7 +87,9 @@ def percentile_curves(datasets: dict) -> dict[str, dict[str, np.ndarray]]:
     curves = {}
     for metric in METRICS:
         values = {name: d[metric][np.isfinite(d[metric])] for name, d in datasets.items()}
-        values["all"] = equal_weight_pool(values, rng)
+        values = {name: v for name, v in values.items() if len(v)}  # e.g. hand metrics of cue-only datasets
+        if values:
+            values["all"] = equal_weight_pool(values, rng)
         curves[metric] = {name: np.percentile(v, PERCENTILES) for name, v in values.items()}
     return curves
 
@@ -115,6 +139,9 @@ def print_acceptance(curves, names: list[str]):
             continue
         cells = []
         for name in names:
+            if name not in curves[metric]:
+                cells.append("-")
+                continue
             dev = deviation(curves[metric][name], curves[metric]["all"], kind)
             value = f"{dev:.0%}" if kind == "ratio" else f"{dev:.2f}"
             cells.append(f"{value} {'PASS' if dev <= tolerance else 'FAIL'}")
@@ -130,7 +157,7 @@ def main():
 
     names = args.datasets or sorted(p.name for p in args.data.iterdir() if p.is_dir())
     curves = percentile_curves({name: load_dataset(args.data / name) for name in names})
-    colors = {name: COLORS[i] for i, name in enumerate(names)} | {"all": POOL_COLOR}
+    colors = {name: COLORS[i % len(COLORS)] for i, name in enumerate(names)} | {"all": POOL_COLOR}
 
     args.out.mkdir(parents=True, exist_ok=True)
     plot_emg(curves, colors, args.out / "emg.png")

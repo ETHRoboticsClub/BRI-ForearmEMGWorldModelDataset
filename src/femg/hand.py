@@ -197,6 +197,19 @@ def is_below(model, body: int, ancestor: int) -> bool:
     return False
 
 
+def visible_bounds(model, data) -> tuple[np.ndarray, float]:
+    """Centre and half diagonal of the box around everything visible (geom groups 0-2) in the current pose."""
+    low, high = np.full(3, np.inf), np.full(3, -np.inf)
+    for g in range(model.ngeom):
+        if model.geom_group[g] > 2:
+            continue
+        frame = data.geom_xmat[g].reshape(3, 3)
+        middle = data.geom_xpos[g] + frame @ model.geom_aabb[g][:3]
+        half = np.abs(frame) @ model.geom_aabb[g][3:]
+        low, high = np.minimum(low, middle - half), np.maximum(high, middle + half)
+    return (low + high) / 2, float(np.linalg.norm(high - low) / 2)
+
+
 def rotation(axis: np.ndarray, angle: float) -> np.ndarray:
     """Rotation matrix about a unit axis (Rodrigues)."""
     x, y, z = axis
@@ -251,19 +264,13 @@ class HandScene:
         self.hide_panel()
 
     def point_camera(self):
-        """Palm seen from the thumb side, fingers up, knuckles to fingertips in view: the same for every hand."""
+        """Palm seen from the thumb side, fingers up, the whole model in view and centred: the same for every hand.
+        The centre of the model is also the pivot of the trackball, so it stays centred while it turns."""
         s = self.hand.settings
         palmar, radial, distal = hand_frame(self.model, self.data, s["palmar_joint"], s["radial_body"], s["ulnar_body"])
         neutral_pose(self.model, self.data)
-        knuckles = (
-            self.data.xpos[self.model.body(s["radial_body"]).id] + self.data.xpos[self.model.body(s["ulnar_body"]).id]
-        ) / 2
-        parents = set(self.model.body_parentid[1:])
-        tips = [b for b in range(1, self.model.nbody) if b not in parents and self.model.body_jntnum[b] > 0]
-        fingertips = np.mean([segment_center(self.model, self.data, b) for b in tips], axis=0)
-        center = (knuckles + fingertips) / 2
-        reach = float(np.linalg.norm(fingertips - knuckles)) + 0.02
-        position = center + 3.0 * reach * unit_vector(1.4 * palmar + 0.6 * radial - 0.3 * distal)
+        center, radius = visible_bounds(self.model, self.data)
+        position = center + 1.7 * radius * unit_vector(1.4 * palmar + 0.6 * radial - 0.3 * distal)
         self.camera = (position, center, distal)
         self.pivot = center
         self.server.initial_camera.position, self.server.initial_camera.look_at = tuple(position), tuple(center)
@@ -271,14 +278,15 @@ class HandScene:
         for client in self.server.get_clients().values():
             self.aim(client)
 
-    def aim(self, client):
-        """Point a viewer at the hand. Skipped while the viewer has not reported its camera yet."""
+    def aim(self, client, attempts: int = 10):
+        """Point a viewer at the centre of the hand, retrying while it has not reported its camera yet."""
         position, center, up = self.camera
         try:
             client.camera.up_direction = up
             client.camera.position, client.camera.look_at = position, center
         except AssertionError:
-            pass
+            if attempts > 1:
+                threading.Timer(0.3, self.aim, (client, attempts - 1)).start()
 
     def orbit(self, right: float, up: float):
         """Trackball: turn the hand itself about the viewer's vertical and horizontal axes (rad). The camera stays
