@@ -1,4 +1,4 @@
-import { Network, Tag } from 'lucide-react'
+import { Network, Rotate3d, Tag } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { playback } from '../lib/playback'
@@ -14,6 +14,13 @@ const VISER_MIN_WIDTH = 600
 export const useHandLink = create<{ connected: boolean }>(() => ({ connected: false }))
 
 const SEND_EVERY_MS = 33
+const RAD_PER_PIXEL = 0.008
+
+let handSocket: WebSocket | null = null
+
+function sendToHand(message: object) {
+  if (handSocket?.readyState === WebSocket.OPEN) handSocket.send(JSON.stringify(message))
+}
 
 /** Keeps the hand of the viser server at the cursor of the open session. */
 function useHandSync(enabled: boolean, labels: boolean) {
@@ -38,6 +45,7 @@ function useHandSync(enabled: boolean, labels: boolean) {
         if (!closed) retry = window.setTimeout(connect, 1500)
       }
       socket.current = ws
+      handSocket = ws
     }
     connect()
     return () => { closed = true; clearTimeout(retry); socket.current?.close() }
@@ -79,17 +87,72 @@ function useHandSync(enabled: boolean, labels: boolean) {
   }, [theme, labels])
 }
 
-export const useHandLabels = create<{ on: boolean; map: boolean; toggle: () => void; toggleMap: () => void }>((set, get) => ({
+interface HandOptions {
+  on: boolean
+  map: boolean
+  free: boolean
+  toggle: () => void
+  toggleMap: () => void
+  toggleFree: () => void
+}
+
+export const useHandLabels = create<HandOptions>((set, get) => ({
   on: true,
   map: false,
+  free: true,
   toggle: () => set({ on: !get().on }),
   toggleMap: () => set({ map: !get().map }),
+  toggleFree: () => set({ free: !get().free }),
 }))
+
+/** Free rotation over the viser view: drag turns the camera about its own axes (no stuck poles), wheel zooms,
+ * double-click resets. The server moves the camera, see HandScene.orbit. */
+function Trackball() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let last: { x: number; y: number } | null = null
+    let pending = { x: 0, y: 0 }
+    let frame = 0
+    const flush = () => {
+      frame = 0
+      if (pending.x || pending.y) sendToHand({ orbit: [pending.x * RAD_PER_PIXEL, pending.y * RAD_PER_PIXEL] })
+      pending = { x: 0, y: 0 }
+    }
+    const down = (e: PointerEvent) => { last = { x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId) }
+    const move = (e: PointerEvent) => {
+      if (!last) return
+      pending.x += e.clientX - last.x
+      pending.y += e.clientY - last.y
+      last = { x: e.clientX, y: e.clientY }
+      frame ||= requestAnimationFrame(flush)
+    }
+    const up = () => { last = null }
+    const wheel = (e: WheelEvent) => { e.preventDefault(); sendToHand({ zoom: Math.exp(e.deltaY * 0.0012) }) }
+    const reset = () => sendToHand({ reset_view: true })
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('wheel', wheel, { passive: false })
+    el.addEventListener('dblclick', reset)
+    return () => {
+      cancelAnimationFrame(frame)
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('wheel', wheel)
+      el.removeEventListener('dblclick', reset)
+    }
+  }, [])
+  return <div ref={ref} title="Drag: rotate · wheel: zoom · double-click: reset view"
+    className="absolute inset-0 cursor-grab touch-none active:cursor-grabbing" />
+}
 
 /** Sync dot and the labels switch, for the section header. */
 export function HandActions() {
   const connected = useHandLink((s) => s.connected)
-  const { on, toggle, map, toggleMap } = useHandLabels()
+  const { on, toggle, map, toggleMap, free, toggleFree } = useHandLabels()
   const hands = useExplorer((s) => s.hands)
   const hand = useExplorer((s) => s.hand)
   const setHand = useExplorer((s) => s.setHand)
@@ -100,6 +163,11 @@ export function HandActions() {
       <button onClick={toggleMap} title="Joint ↔ label map" aria-pressed={map}
         className={`grid size-6 place-items-center rounded-md ${map ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
         <Network size={12} />
+      </button>
+      <button onClick={toggleFree} title={free ? 'Free rotation (on): drag, wheel, double-click to reset' : 'Free rotation (off): viser controls'}
+        aria-pressed={free}
+        className={`grid size-6 place-items-center rounded-md ${free ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
+        <Rotate3d size={12} />
       </button>
       <button onClick={toggle} title="Joint labels" aria-pressed={on}
         className={`grid size-6 place-items-center rounded-md ${on ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
@@ -113,6 +181,7 @@ export function HandView() {
   const port = useExplorer((s) => s.handPort)
   const labels = useHandLabels((s) => s.on)
   const map = useHandLabels((s) => s.map)
+  const free = useHandLabels((s) => s.free)
   const hand = useExplorer((s) => s.hand)
   useHandSync(port !== null, labels)
   const [box, size] = useSize<HTMLDivElement>()
@@ -125,6 +194,7 @@ export function HandView() {
         : <iframe key={hand} title="hand" src={`${location.protocol}//${location.hostname}:${port}`}
             className="absolute top-0 left-0 origin-top-left border-0 bg-bg"
             style={{ width: size.width / scale, height: size.height / scale, transform: `scale(${scale})` }} />}
+      {port !== null && free && !map && <Trackball />}
       {map && <HandMap />}
     </div>
   )
