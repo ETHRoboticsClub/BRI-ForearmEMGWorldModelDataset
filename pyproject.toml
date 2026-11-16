@@ -21,6 +21,7 @@ dependencies = [
 dvc = ["dvc[s3]>=3.50"]
 viz = ["matplotlib>=3.7", "mujoco>=3.3", "mujoco-menagerie>=2026.10", "mjviser>=0.0.17", "typst>=0.15"]
 explorer = ["femg[viz]", "fastapi>=0.110", "uvicorn[standard]>=0.29", "myo-sim>=0.2.3"]  # myo-sim: MyoHand  # python -m tools.explorer  # scripts/compare_datasets.py, scripts/view_hand.py
+model = ["torch>=2.2"]  # femg.channel_encoder, scripts/test_channel_encoder.py
 dev = ["pytest>=8", "ruff>=0.5", "pre-commit>=3"]
 
 [tool.setuptools.packages.find]

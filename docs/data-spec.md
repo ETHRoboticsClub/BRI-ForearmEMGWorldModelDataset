@@ -3,7 +3,7 @@
 Goal: one dataset in which **any forearm EMG activation maps to the correct hand pose**, pooled from public
 datasets, to train a generic EMG2pose model that can transfer to transradial amputees.
 
-This file is the contract. `src/femg/joints.py`, `src/femg/processor.py` and `params.yaml` implement it; change them together.
+This file is the contract. `src/femg/hand/joints.py`, `src/femg/processor.py` and `params.yaml` implement it; change them together.
 
 ## 1. Requirements
 
@@ -12,11 +12,13 @@ This file is the contract. `src/femg/joints.py`, `src/femg/processor.py` and `pa
 | R1 | Forearm EMG only (a residual limb has no wrist) | Sources must record over the forearm muscle bellies. Wrist datasets (emg2pose) are excluded from supervised data |
 | R2 | One EMG rate for every session | `processor.fs` (500 Hz). Polyphase anti-aliased resampling. **Never upsample**: datasets whose *effective* rate is below `fs` are skipped |
 | R3 | Filtering a device can reproduce | Causal 10 Hz high-pass + mains notches (per dataset: 50/60 Hz) at build time. Anything stronger (band-pass, envelopes) is a model choice and belongs to the training repo |
-| R4 | Physical units | EMG in volts (`Dataset.emg_unit_scale`), angles in radians |
+| R4 | Physical units | EMG in volts (`emg_unit_scale` in the dataset config), angles in radians |
 | R5 | One label space | 22 canonical right-hand joints (`joints.CANONICAL_JOINTS`). Unmeasured joints are NaN, and the loader turns them into a `mask` for the loss |
-| R5b | One sign convention | Readers flip sensors that run against `joints.py` (flexion, spread, radial > 0), checked on instructed movements by `scripts/check_signs.py` (table in `src/femg/hands/README.md`) |
+| R5b | One sign convention | Readers flip sensors that run against `joints.py` (flexion, spread, radial > 0), checked on instructed movements (table in `src/femg/hand/README.md`) |
+| R5c | Know where every electrode is | `meta["electrodes"]`: per channel, angle around the forearm, position along it, bipolar / monopolar and group; `meta["electrode_groups"]`: how well each group's placement is known (undocumented ring rotation, direction). Unknown positions are null. Written per dataset in `src/femg/datasets/config/<name>.yaml`; classes in `src/femg/electrodes.py` |
 | R6 | Know where labels come from | `label_source` ∈ measured / mirrored / cue; `kin_units` ∈ rad / rad_uncalibrated |
-| R7 | Time alignment | Label `k` is the hand at EMG sample `k·fs/label_fs`. Known dataset lags are corrected at build time (`Dataset.kin_lag_s`, `Processor.align_labels`) |
+| R7 | Time alignment | Label `k` is the hand at EMG sample `k·fs/label_fs`. Known dataset lags are corrected at build time (`kin_lag_s` in the dataset config, `Processor.align_labels`), checked with `scripts/estimate_kin_lag.py` |
+| R7b | Only measured labels, continuous in time | No pose is invented: where nothing was measured the frame is all NaN (masked). Trials joined into one session are separate `segments` in meta; nothing is filtered across a join, the first `settle_s` after it has no label, and windows stay inside one segment. Glove / camera artefacts (repeated frames, quantization steps, jitter) are removed the same way for every dataset (`Processor.resample_labels`) |
 | R8 | Normalization needs no labels and can be reproduced on a device | Two anchors per session and channel, stored at build time (`emg_stats.floor/active`, `kin_stats.low/high`), see §2. On a device they come from a 1-2 min calibration (rest + full open/close). `calib_rms` (first `calib_s` s) is kept for comparison |
 | R9 | Subject-level splits | Every split is by subject (windows overlap). `percent` selects subjects, never windows |
 | R10 | Scale from dev to full | `--percent` takes the first N% of subjects: nested and identical for downloading, building and loading |
@@ -32,6 +34,15 @@ lower, rebuild with that `fs`: the build is parametric and DVC tracks the change
 
 **Labels at 100 Hz.** Hand kinematics have essentially no content above about 10 Hz. Storing them at the EMG rate
 would waste disk and RAM.
+
+**One label quality for every dataset.** The raw labels differ in texture more than in content: DB8 holds each
+glove frame (~29 Hz steps), GREAT / SEEDS / DB2 repeat frames and step by one quantization level, EMG-FK (camera)
+drops frames and jitters by ~1.4°. Left as is, most of the frame-to-frame change of those labels is artefact (60-70 %
+of the label velocity power above 10 Hz in DB8, GREAT and SEEDS), the label trails the EMG by up to a held frame, and
+a model can tell the datasets apart by texture alone. So the processor rebuilds every label the same way: a frame
+repeated for up to `kin_max_repeat_s` (0.1 s) is a late frame and is interpolated over (longer: the hand was still),
+then a zero-phase `kin_lowpass` (6 Hz, above voluntary finger movement) smooths what is left. Labels are targets,
+never inputs, so a non-causal filter is fine.
 
 **Store continuous sessions, window in the loader.** The training repo currently stores overlapping windows
 (240/40 → 6× redundant). Here windows are cut from memory-mapped arrays on the fly (≈17 µs per item), so
@@ -65,14 +76,14 @@ datasets record different behaviour there, and the loader should balance them by
 
 | Dataset | Status | EMG | Labels | Subjects | Notes |
 |---|---|---|---|---|---|
-| EMG-FK | ✅ reader, built | 8 dry monopolar, 500 Hz | 15 MediaPipe flexions (rad) | 20 intact | Angle order inferred, not confirmed. ~300 ms lag, direction unknown |
+| EMG-FK | ✅ reader, built | 8 dry monopolar, 500 Hz | 15 MediaPipe flexions (rad) | 20 intact | Angle order inferred, not confirmed. Angles ~300 ms late (authors' size, direction from `estimate_kin_lag.py` on s01): `kin_lag_s = -0.3` |
 | NinaPro DB2 | ✅ reader | 12 Delsys, 2 kHz | CyberGlove 22, raw | 40 intact | E3 (force) has no glove, so it is skipped |
 | NinaPro DB8 | ✅ reader, tested on S1_E1_A3 | 16 Delsys (2 rows), 1111 Hz eff. | CyberGlove 18, calibrated, mirrored | 10 intact + 2 amputees | Which channels form row 1 is not documented |
 | NinaPro DB7 | ✅ reader, tested on S1_E1 | 12 Delsys Trigno IM, 1111 Hz eff. (spectrum) | CyberGlove 18, uncalibrated | 20 intact + 2 amputees | Glove hand not documented (amputees: assumed mirrored). Ring8 column order assumed |
 | NinaPro DB3 | ✅ reader, tested on S1 | 12 Delsys, 2 kHz | cue only | 11 amputees (s05, s06 left) | The files have a 22-sensor glove, but it barely moves: not used. `label_source=cue`: amputee evaluation / gesture head |
 | NinaPro DB4 | ✅ reader, tested on S1 | 12 Cometa, 2 kHz | cue only | 10 intact | The page lists a glove, **the files have none**. EMG units assumed µV (rest RMS 30-90 µV: to confirm) |
-| SEEDS | ✅ reader, tested on s01 Sess1 | 126 HD grid (flexors) + 8 extensor electrodes, 2048 Hz, left forearm | CyberGlove III 18, 0-1 per sensor | 25 | No ring8 (montages `hd_flexor126`, `extensor8`). 234 short trials per subject → joined into 3 sessions. Authors filtered zero-phase 10-500 Hz. File list pinned in `seeds_files.csv.gz` (OSF) |
-| KIN-MUS UJI | ✅ reader, tested on s01, s21, s22 | 7 bipolar spots, 1 kHz | CyberGlove 18, calibrated (rad) | 22 | 26 daily-living tasks with real objects. No ring8 (montage `spots7`). 26 ADLs joined into one session |
+| SEEDS | ✅ reader, tested on s01 Sess1 | 126 HD grid (flexors) + 8 extensor electrodes, 2048 Hz, left forearm | CyberGlove III 18, 0-1 per sensor | 25 | No ring8 (montages `hd_flexor126`, `extensor8`). 234 short trials per subject → joined into 3 sessions (one segment per trial). No cue in the files: the stimulus is the trial's movement where the glove moves, rest before (3-6 s per trial). Authors filtered zero-phase 10-500 Hz. File list pinned in `seeds_files.csv.gz` (OSF) |
+| KIN-MUS UJI | ✅ reader, tested on s01, s21, s22 | 7 bipolar spots, 1 kHz | CyberGlove 18, calibrated (rad) | 22 | 26 daily-living tasks with real objects. No ring8 (montage `spots7`). 26 ADLs joined into one session (one segment each); no kinematics between the reach and release of an ADL (17 % of the EMG): no label there |
 | GREAT | ✅ reader, tested on p1 day1 block1 | 16 Delsys (2 rows of 8), 2 kHz | CyberGlove 18, uncalibrated | 8 intact | 6 grasps × 5 arm positions × 5 reps, 2 days × 2 blocks. Files from the authors' GitHub (Dryad refuses scripts). EMG band-passed 20-450 Hz at recording. Ring8 row assumed. Arm position per trial in meta |
 | Hyser | ❌ labels | 256 HD-EMG, 2048 Hz | finger forces only | 20 | Needs a force head. Open on PhysioNet (143 GB) |
 | HD-FW KIN (PhysioNet 2025) | ❌ access | 3×64 forearm + wrist HD grids | 5DT glove, 200 Hz | 21 | Restricted: needs a signed PhysioNet DUA. 114 GB |
@@ -82,14 +93,13 @@ datasets record different behaviour there, and the loader should balance them by
 ## 4. Roadmap (in order)
 
 1. **Confirm label semantics** (blocks trusting per-joint metrics)
-   - Done for the spread / wrist / thumb signs of DB2, DB7, SEEDS, KIN-MUS, GREAT (`scripts/check_signs.py`). The DB2
-     spreads and `wrist_dev` were reversed before: **rebuild DB2 with `--overwrite`** (the build only notices processor
-     changes, not reader changes). DB8 (calibrated glove) is still unchecked: look at it in the explorer.
+   - Done for the spread / wrist / thumb signs of DB2, DB7, SEEDS, KIN-MUS, GREAT (instructed movements). DB8
+     (calibrated glove) is still unchecked: look at it in the explorer.
    - EMG-FK angle order: check `figures/figure_angles.png` in the authors' repo and the paper's Fig. 1.
    - CyberGlove sign conventions (abduction, wrist deviation) across DB2/DB8 with a visual check.
    - DB8 ring rows: pick the 8 channels whose cross-correlation forms a ring.
-2. **Estimate lags.** Cross-correlate EMG envelope with joint speed per session and set `kin_lag_s` (EMG-FK first:
-   ~0.3 s). Add a `scripts/estimate_lag.py` and store the per-session estimate in meta.
+2. **Estimate lags.** Done for EMG-FK on s01 (`scripts/estimate_kin_lag.py`, `kin_lag_s = -0.3`): confirm on more
+   subjects once they are downloaded, and check KIN-MUS UJI (560 ms on s01, weak fit).
 3. **Full build of the three datasets** on Sky (`sky/build.yaml`), then `dvc push` and commit `dvc.lock`.
 4. **Wire the training repo**: `dvc import` + `pip install` of this package; replace `EMGFK` with
    `EMGWindows(montage="ring8")`; check that EMG-FK-only results match the current baseline.
@@ -98,8 +108,8 @@ datasets record different behaviour there, and the loader should balance them by
 6. **QC report per session**: flat or saturated channels, glove glitches (e.g. DB2 sensor 11 hits ±800), stimulus
    coverage. Flag sessions in meta, and have the loader drop flagged ones.
 7. **Validate DB7, DB3, DB4, SEEDS, KIN-MUS UJI, GREAT** (readers added): build a 5 % sample, confirm the open points in
-   each `verified`, and run `scripts/compare_datasets.py` before they join the pool. The script needs `ring8` and
-   kinematics, so SEEDS / KIN-MUS (no ring) and DB3 / DB4 (cue only) need a montage-free or EMG-only comparison.
+   each config's `notes`, and run `scripts/compare_datasets.py` before they join the pool (it falls back to each dataset's
+   small montage, and to EMG only for DB3 / DB4).
 8. **Channel-agnostic option**: electrode geometry (angle around the forearm, distance from the elbow) in meta for
    a set/attention encoder, instead of fixed montages.
 9. **Evaluation protocol**: leave-one-subject-out, leave-one-dataset-out, and amputee-only (DB8 s11/s12, DB7
