@@ -59,6 +59,7 @@ def main():
         info.content = (
             f"**{meta['key']}** on {hand.title} ({meta['label_source']}, {meta['kin_units']})  \n"
             f"t = {k / label_fs:.2f} s / {len(kin) / label_fs:.0f} s, stimulus = {stimulus[k]}"
+            + ("" if np.isfinite(kin[k]).any() else "  \n**no label here** (fallback pose)")
         )
 
     reset(model, data)

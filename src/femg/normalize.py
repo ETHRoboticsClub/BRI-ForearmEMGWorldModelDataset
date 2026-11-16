@@ -1,5 +1,7 @@
+import warnings
+
 import numpy as np
-from scipy.ndimage import binary_closing, uniform_filter1d
+from scipy.ndimage import binary_closing
 
 from femg.joints import JOINT_INDEX
 
@@ -39,12 +41,14 @@ def normalize_kin(kin: np.ndarray, kin_stats: dict) -> np.ndarray:
 
 
 def hand_flexion(kin_norm: np.ndarray) -> np.ndarray:
-    return np.nanmean(kin_norm[:, FINGER_FLEX], axis=1)
+    """Mean finger flexion per frame; NaN where the frame has no label."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN frames
+        return np.nanmean(kin_norm[:, FINGER_FLEX], axis=1)
 
 
-def hand_speed(flexion: np.ndarray, label_fs: float, window: int) -> np.ndarray:
-    smooth_flexion = uniform_filter1d(flexion, window)  # gloves slower than label_fs are held between samples
-    return np.abs(np.gradient(smooth_flexion)) * label_fs
+def hand_speed(flexion: np.ndarray, label_fs: float) -> np.ndarray:
+    return np.abs(np.gradient(flexion)) * label_fs  # the labels are already low-passed (processor kin_lowpass)
 
 
 def scenarios(flexion: np.ndarray, speed: np.ndarray) -> dict[str, np.ndarray]:

@@ -36,7 +36,7 @@ export type Segment = [start: number, end: number, id: number]
 export interface Overview {
   dt: number
   envelope: number[]
-  flexion: number[]
+  flexion: (number | null)[]  // null: no label
   stimulus: Segment[]
 }
 
@@ -50,7 +50,7 @@ export interface WindowData {
   end: number
   emg: Series & { channels: number[]; min: number[][]; max: number[][] }
   envelope: Series & { values: number[][] }
-  kin: Series & { joints: number[]; values: number[][] }
+  kin: Series & { joints: number[]; values: (number | null)[][] }  // null: no label
   stimulus: Segment[]
 }
 
@@ -94,7 +94,7 @@ export const api = {
 }
 
 /** The value of a series at time t (nearest sample), or undefined outside it. */
-export function valueAt(series: Series, values: number[], t: number) {
+export function valueAt<T>(series: Series, values: T[], t: number) {
   const i = Math.round((t - series.t0) / series.dt)
   return i >= 0 && i < values.length ? values[i] : undefined
 }

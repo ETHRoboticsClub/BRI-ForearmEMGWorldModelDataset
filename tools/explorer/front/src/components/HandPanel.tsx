@@ -1,7 +1,8 @@
 import { Network, Tag } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
-import { playback } from '../lib/playback'
+import { valueAt } from '../lib/api'
+import { playback, usePlayback } from '../lib/playback'
 import { useTheme } from '../lib/theme'
 import { useExplorer } from '../store'
 import { HandMap } from './HandMap'
@@ -185,8 +186,27 @@ export function HandView() {
             className="absolute top-0 left-0 origin-top-left border-0 bg-bg"
             style={{ width: size.width / scale, height: size.height / scale, transform: `scale(${scale})` }} />}
       {port !== null && !map && <Trackball />}
+      {port !== null && !map && <NoLabelNotice />}
       {map && <HandMap />}
     </div>
+  )
+}
+
+/** Where the session has no kinematic label (between trials, after a join), the hand keeps its last pose. */
+function NoLabelNotice() {
+  const data = useExplorer((s) => s.data)
+  const [missing, setMissing] = useState(false)
+  const check = useCallback(() => {
+    const kin = data?.kin
+    setMissing(!!kin && kin.joints.length > 0 && kin.values.every((v) => valueAt(kin, v, playback.time) === null))
+  }, [data])
+  useEffect(check, [check])
+  usePlayback(check)
+  if (!missing) return null
+  return (
+    <p className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-md bg-raised px-2 py-1 text-xs text-muted">
+      No kinematics here: the hand keeps its last pose
+    </p>
   )
 }
 

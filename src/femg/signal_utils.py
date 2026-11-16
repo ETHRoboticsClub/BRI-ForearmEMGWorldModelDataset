@@ -11,30 +11,13 @@ def resample_ratio(fs_in: float, fs_out: float) -> Fraction:
     return Fraction(fs_out / fs_in).limit_denominator(1000)
 
 
-def resample(x: np.ndarray, fs_in: float, fs_out: float, padtype: str = "constant") -> np.ndarray:
-    """Anti-aliased polyphase resampling. padtype="line" avoids edge artifacts on slow signals (kinematics)."""
+def resample(x: np.ndarray, fs_in: float, fs_out: float) -> np.ndarray:
+    """Anti-aliased polyphase resampling (EMG)."""
     if fs_in == fs_out:
         return np.ascontiguousarray(x, dtype=np.float32)
     ratio = resample_ratio(fs_in, fs_out)
-    y = signal.resample_poly(x.astype(np.float32), ratio.numerator, ratio.denominator, axis=0, padtype=padtype)
+    y = signal.resample_poly(x.astype(np.float32), ratio.numerator, ratio.denominator, axis=0)
     return np.ascontiguousarray(y, dtype=np.float32)
-
-
-def resample_with_nans(x: np.ndarray, fs_in: float, fs_out: float) -> np.ndarray:
-    """All-NaN columns (unmeasured joints) stay NaN; isolated NaNs are interpolated."""
-    ratio = resample_ratio(fs_in, fs_out)
-    n_out = math.ceil(len(x) * ratio.numerator / ratio.denominator)
-    out = np.full((n_out, x.shape[1]), np.nan, np.float32)
-    for j in range(x.shape[1]):
-        col = x[:, j]
-        valid = np.isfinite(col)
-        if not valid.any():
-            continue
-        if not valid.all():
-            t = np.arange(len(col))
-            col = np.interp(t, t[valid], col[valid])
-        out[:, j] = resample(col[:, None], fs_in, fs_out, padtype="line")[:, 0]
-    return out
 
 
 def pick_nearest(x: np.ndarray, fs_in: float, fs_out: float) -> np.ndarray:
@@ -42,6 +25,73 @@ def pick_nearest(x: np.ndarray, fs_in: float, fs_out: float) -> np.ndarray:
     n_out = int(len(x) * fs_out / fs_in)
     idx = np.round(np.arange(n_out) * fs_in / fs_out).astype(np.int64)
     return x[np.minimum(idx, len(x) - 1)]
+
+
+def runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """[start, end) of every run of True."""
+    edges = np.diff(np.concatenate([[0], mask.astype(np.int8), [0]]))
+    return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1), strict=True))
+
+
+def bridge_gaps(valid: np.ndarray, max_gap: int) -> np.ndarray:
+    """valid, with every run of False of at most max_gap samples between two valid samples set to True."""
+    bridged = valid.copy()
+    for a, b in runs(~valid):
+        if a > 0 and b < len(valid) and b - a <= max_gap:
+            bridged[a:b] = True
+    return bridged
+
+
+def frame_knots(x: np.ndarray, rows: np.ndarray, joints: np.ndarray, max_repeat: int) -> np.ndarray:
+    """The rows of x (sample indices, all finite on `joints`) that carry a new measurement.
+
+    Gloves and cameras slower than the file rate repeat their last frame until the next one arrives (held, or
+    linearly interpolated by the authors), and repeat it again when a frame is late or the value did not cross a
+    quantization step: the hand then steps instead of moving (DB8 ~29 Hz, GREAT ~32 Hz, emg_fk camera). The new
+    frames are the corners of that piecewise-linear signal, minus the corners that repeat the previous one: those
+    are dropped unless the repeat lasts more than max_repeat samples (then the hand really was still)."""
+    corner = np.zeros(len(rows), bool)
+    corner[[0, -1]] = True
+    for j in joints:
+        corner[1:-1] |= np.abs(np.diff(x[rows, j], 2)) > 1e-6
+    corners = np.flatnonzero(corner)
+    same = np.ones(len(corners) - 1, bool)
+    for j in joints:
+        values = x[rows[corners], j]
+        same &= values[1:] == values[:-1]
+    repeat = same & (np.diff(rows[corners]) <= max_repeat)
+    return rows[corners[np.concatenate([[True], ~repeat])]]
+
+
+def resample_kin(kin, fs_in, fs_out, segments, lowpass_hz, max_gap_s, max_repeat_s) -> np.ndarray:
+    """Kinematics (T, J) at fs_out, label frame k at time k / fs_out, one segment (continuous recording, from each
+    start in `segments` to the next) at a time: nothing is interpolated or filtered across the join of two trials.
+
+    A row with NaN on a measured joint has no measurement: gaps up to max_gap_s are interpolated, longer ones stay
+    NaN (no label). Repeated frames are interpolated over (frame_knots), then a zero-phase low-pass at lowpass_hz,
+    capped at 0.4 fs_out against aliasing, smooths the remaining quantization steps and tracking jitter. Labels
+    are targets, not inputs, so they need not be causal."""
+    n_out = math.ceil(len(kin) * fs_out / fs_in)
+    out = np.full((n_out, kin.shape[1]), np.nan, np.float32)
+    joints = np.flatnonzero(np.isfinite(kin).any(axis=0))
+    if not len(joints):
+        return out
+    sos = signal.butter(2, min(lowpass_hz or np.inf, 0.4 * fs_out), fs=fs_in, output="sos")
+    valid = np.isfinite(kin[:, joints]).all(axis=1)
+    for start, end in zip(segments, [*segments[1:], len(kin)], strict=True):
+        for a, b in runs(bridge_gaps(valid[start:end], round(max_gap_s * fs_in))):
+            a, b = start + a, start + b  # a measured stretch, [a, b) in kin samples
+            x = kin[a:b]
+            knots = frame_knots(x, np.flatnonzero(valid[a:b]), joints, round(max_repeat_s * fs_in))
+            frames = np.arange(math.ceil(a * fs_out / fs_in), math.floor((b - 1) * fs_out / fs_in) + 1)
+            times = frames * fs_in / fs_out - a  # in samples of x
+            samples = np.arange(len(x))
+            for j in joints:
+                dense = np.interp(samples, knots, x[knots, j])
+                if len(x) > 3 * (2 * len(sos) + 1):  # sosfiltfilt's padding
+                    dense = signal.sosfiltfilt(sos, dense)
+                out[frames, j] = np.interp(times, samples, dense)
+    return out
 
 
 def causal_filter(x: np.ndarray, fs: float, highpass_hz: float | None, mains_hz: float | None) -> np.ndarray:

@@ -35,11 +35,14 @@ export function Navigator() {
     ctx.strokeStyle = token('accent')
     ctx.lineWidth = 1.2
     ctx.beginPath()
+    let drawing = false  // gaps where there is no label
     overview.flexion.forEach((v, i) => {
+      if (v === null) { drawing = false; return }
       const px = x(i * overview.dt)
       const py = plotBottom - 4 - Math.min(Math.max(v, 0), 1) * (plotBottom - 10)
-      if (i) ctx.lineTo(px, py)
+      if (drawing) ctx.lineTo(px, py)
       else ctx.moveTo(px, py)
+      drawing = true
     })
     ctx.stroke()
 

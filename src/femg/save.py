@@ -55,6 +55,8 @@ def make_meta(dataset, session, processor) -> dict:
         "label_fs": processor.label_fs,
         "joints": CANONICAL_JOINTS,
         "measured_joints": measured,
+        # [start, end) label frames of each continuous recording; a frame whose kin row is all NaN has no label
+        "segments": [[a, b] for a, b in zip(session.segments, [*session.segments[1:], len(session.kin)], strict=True)],
         "processor": processor.settings(),
     }
     return meta

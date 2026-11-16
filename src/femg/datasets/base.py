@@ -17,6 +17,9 @@ class Session:
     kin_fs: float  # rate of kin and stimulus
     stimulus: np.ndarray | None = None  # (Tk,) instructed movement id, 0 = rest
     info: dict = field(default_factory=dict)  # copied to meta.json
+    # where each continuous recording starts (kin samples, label frames once processed): trials joined end to end
+    # are not continuous in time, so nothing is filtered across a join and training windows must not span one
+    segments: list[int] = field(default_factory=lambda: [0])
 
 
 class Dataset:

@@ -59,7 +59,7 @@ def load_session(folder: Path) -> dict[str, np.ndarray]:
 
     kin = normalize_kin(np.load(folder / "kin.npy"), meta["kin_stats"])
     flexion = hand_flexion(kin)
-    speed = hand_speed(flexion, label_fs, window)
+    speed = hand_speed(flexion, label_fs)
     masks = scenarios(flexion, speed)
 
     metrics = {}

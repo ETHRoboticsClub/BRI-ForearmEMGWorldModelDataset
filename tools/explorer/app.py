@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -102,7 +103,9 @@ def create_app(data: Path, hand_port: int | None, host: str = "127.0.0.1") -> Fa
                     s = store.session(message["key"])
                     frame = min(max(int(message["t"] * s.label_fs), 0), len(s.kin) - 1)
                     unit = message.get("unit", True)
-                    hand.show((s.kin_unit if unit else s.kin)[frame], unit, s.kin_center)
+                    pose = (s.kin_unit if unit else s.kin)[frame]
+                    if np.isfinite(pose).any():  # no label (between trials): the hand keeps its last pose
+                        hand.show(pose, unit, s.kin_center)
         except WebSocketDisconnect:
             pass
 

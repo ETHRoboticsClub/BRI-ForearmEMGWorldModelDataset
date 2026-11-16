@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from femg.normalize import as_array, display_montage, hand_flexion, has_kinematics, normalize_kin
+from femg.normalize import as_array, display_montage, hand_flexion, normalize_kin
 from femg.signal_utils import envelope
 
 OPEN_SESSIONS = 8
@@ -82,7 +82,7 @@ class Session:
         ring = self.ring()
         rms = envelope(self.emg[:, ring], self.emg_per_label, self.rms_frames).mean(axis=1)
         rms = rms / max(float(np.percentile(rms, 99)), 1e-12)
-        flexion = np.nan_to_num(hand_flexion(self.kin_unit)) if has_kinematics(self.meta) else np.zeros(len(rms))
+        flexion = hand_flexion(self.kin_unit)  # NaN (null: a gap) where there is no label
         step = max(1, len(rms) // points)
         return {
             "dt": step / self.label_fs,
@@ -175,7 +175,9 @@ def bucket(x: np.ndarray, step: int, reduce) -> np.ndarray:
 
 
 def rounded(x: np.ndarray, decimals: int) -> list:
-    return np.round(np.nan_to_num(np.asarray(x, np.float64)), decimals).tolist()
+    """NaN (no label) becomes None, null in the JSON."""
+    x = np.round(np.asarray(x, np.float64), decimals)
+    return np.where(np.isfinite(x), x, None).tolist()
 
 
 def segments(stimulus: np.ndarray, first_frame: int, label_fs: float) -> list[list[float]]:

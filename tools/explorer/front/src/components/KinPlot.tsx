@@ -31,7 +31,10 @@ export function KinPlot() {
     let low = kinScale === 'unit' ? -0.1 : Infinity
     let high = kinScale === 'unit' ? 1.1 : -Infinity
     if (kinScale === 'rad') {
-      for (const r of rows) for (let i = i0; i < i1; i++) { low = Math.min(low, kin.values[r][i]); high = Math.max(high, kin.values[r][i]) }
+      for (const r of rows) for (let i = i0; i < i1; i++) {
+        const v = kin.values[r][i]
+        if (v !== null) { low = Math.min(low, v); high = Math.max(high, v) }
+      }
       if (!isFinite(low)) { low = 0; high = 1 }
       const margin = (high - low) * 0.08 || 0.1
       low -= margin; high += margin
@@ -55,10 +58,14 @@ export function KinPlot() {
       ctx.setLineDash(style.dash)
       ctx.lineWidth = 1.6
       ctx.beginPath()
+      let drawing = false  // the line breaks where there is no label
       for (let i = i0; i < i1; i++) {
+        const v = kin.values[r][i]
+        if (v === null) { drawing = false; continue }
         const px = x(kin.t0 + i * kin.dt)
-        if (i === i0) ctx.moveTo(px, y(kin.values[r][i]))
-        else ctx.lineTo(px, y(kin.values[r][i]))
+        if (drawing) ctx.lineTo(px, y(v))
+        else ctx.moveTo(px, y(v))
+        drawing = true
       }
       ctx.stroke()
     }
