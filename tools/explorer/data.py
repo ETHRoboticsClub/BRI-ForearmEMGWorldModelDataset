@@ -22,7 +22,8 @@ DETAILS = SUMMARY + [
     "joints",
     "measured_joints",
     "kin_lag_s",
-    "verified",
+    "description",
+    "notes",
 ]
 
 

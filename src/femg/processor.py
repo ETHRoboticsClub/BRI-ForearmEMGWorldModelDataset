@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from femg.joints import N_JOINTS
+from femg.hand.joints import N_JOINTS
 from femg.signal_utils import causal_filter, emg_stats, kin_stats, pick_nearest, resample, resample_kin
 
 
@@ -57,9 +57,9 @@ class Processor:
 
     def process(self, session, dataset):
         session = self.resample_emg(session)  # before filtering: fewer samples to filter
-        session = self.filter_emg(session, dataset.mains_hz)
+        session = self.filter_emg(session, dataset.config.mains_hz)
         session = self.resample_labels(session)
-        session = self.align_labels(session, dataset.kin_lag_s)
+        session = self.align_labels(session, dataset.config.kin_lag_s)
         session = self.drop_settling(session)
         session = self.add_stats(session)
         return session

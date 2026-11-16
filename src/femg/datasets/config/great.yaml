@@ -1,0 +1,28 @@
+description: 8 intact participants, 5 grasps held at 5 arm positions. The dataset to learn invariance to arm posture.
+citation: GREAT, Scientific Data 2024, doi:10.1038/s41597-024-04296-8, doi:10.5061/dryad.8sf7m0czv
+license: CC0-1.0
+url: https://datadryad.org/dataset/doi:10.5061/dryad.8sf7m0czv
+device: 16 Delsys Trigno in two rows of 8 around the forearm
+hand: right
+
+native_fs: 2000
+effective_fs: 2000
+mains_hz: 50  # recorded in the UK
+
+electrodes:  # as NinaPro DB8
+  - {name: rings, kind: bipolar, layout: ring, n: 8, z: [0.05, 0.2], angle_sd: 180, z_sd: 0.1, mirror: true}
+montages:
+  ring8: 0-7  # assumed: first row = channels 1-8 (not documented)
+
+notes:
+  files: >-
+    participant1_day1_block1 opened: emg_data (150 trials, each (16, ~10000) float32 V, std 7-40 uV), glove_data
+    (150, (18, same T) float64, upsampled to 2 kHz), trials.csv (target_position, grasp per trial)
+  emg_preprocessing: "recording_parameters.txt: 4th-order 20-450 Hz Butterworth applied while recording"
+  glove: "uncalibrated (abduction sensors sit near -60); MCP/PIP pairs correlate 0.61-0.96 -> CYBERGLOVE_18"
+  ring8: row membership of channels not documented
+  glove_hand: assumed the EMG hand (intact participants)
+  glove_signs: >-
+    p1 d1b1, normalized medians: open > rest on the 3 spreads (+0.45..+0.84), power raises thumb roll (+0.67) and
+    lowers thumb abduction (-0.81) vs open: canonical as is (unlike the NinaPro raw glove); wrist_dev not checked (no
+    wrist movement)

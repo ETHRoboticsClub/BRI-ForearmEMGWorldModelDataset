@@ -1,4 +1,4 @@
-from femg.datasets.base import Dataset, Session, first_percent
+from femg.datasets.base import Dataset, DatasetConfig, Session, first_percent
 from femg.datasets.emg_fk import EMGFK
 from femg.datasets.great import GREAT
 from femg.datasets.kin_mus_uji import KinMusUJI
@@ -17,4 +17,4 @@ DATASETS = {
     "great": GREAT,
 }
 
-__all__ = ["DATASETS", "Dataset", "Session", "first_percent"]
+__all__ = ["DATASETS", "Dataset", "DatasetConfig", "Session", "first_percent"]

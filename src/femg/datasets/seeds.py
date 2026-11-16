@@ -7,10 +7,12 @@ from functools import cache
 from pathlib import Path
 
 import numpy as np
+from scipy.ndimage import uniform_filter1d
 
 from femg.datasets.base import Dataset, Session, concat_trials
-from femg.datasets.ninapro import CYBERGLOVE_18, glove_to_canonical
+from femg.datasets.ninapro import glove_to_canonical
 from femg.download import RemoteFile
+from femg.hand.joints import CYBERGLOVE_18
 
 # The files are on OSF under opaque ids, split over three projects: subjects 1-10, 11-20, 21-25.
 # seeds_files.csv.gz pins name, id and md5 of every trial; rebuild it with `python -m femg.datasets.seeds`.
@@ -18,33 +20,10 @@ OSF_PROJECTS = ["wa3qk", "e7m5k", "yp4vq"]
 MANIFEST = Path(__file__).with_name("seeds_files.csv.gz")
 TRIAL = re.compile(r"detop_exp01_subj(\d\d)_Sess(\d)_(\d\d)_(\d\d)\.mat")  # subject, session, movement, repetition
 
-# channels_glove of the files, checked on load. Same sensors and order as the NinaPro 18-DOF CyberGlove.
-GLOVE = [
-    "Thumb_Roll",
-    "Thumb_Inner",
-    "Thumb_Outer",
-    "TI_Abduction",
-    "Index_Inner",
-    "Index_Middle",
-    "Middle_Inner",
-    "Middle_Middle",
-    "MI_Abduction",
-    "Ring_Inner",
-    "Ring_Middle",
-    "RM_Abduction",
-    "Pinky_Inner",
-    "Pinky_Middle",
-    "PR_Abduction",
-    "Palm_Arch",
-    "Wrist_Flex",
-    "Wrist_Abduction",
-]
-
-
-# No sensor is flipped. Checked on s01 (3 sessions) with scripts/check_signs.py, on the frames of each trial that
-# move furthest from its start: thumbFlex raises thumb MCP/IP flexion and thumb roll (thumb_cmc_flex) and lowers
-# thumb abduction (thumb_cmc_abd), as the canonical thumb labels; index_flex / middle_flex raise their MCP. The spread
-# sensors gave no consistent answer (disc: +0.3 / -0.5 / 0.0 across sessions) and the wrist was not instructed.
+# No sensor is flipped. Checked on s01 (3 sessions), on the frames of each trial that move furthest from its start:
+# thumbFlex raises thumb MCP/IP flexion and thumb roll (thumb_cmc_flex) and lowers thumb abduction (thumb_cmc_abd),
+# as the canonical thumb labels; index_flex / middle_flex raise their MCP. The spread sensors gave no consistent
+# answer (disc: +0.3 / -0.5 / 0.0 across sessions) and the wrist was not instructed.
 FLIPPED: tuple[str, ...] = ()
 # Trial movement ids (CC in the file names) -> the `movement` string stored in each file
 MOVEMENTS = {
@@ -78,31 +57,6 @@ def manifest() -> dict[str, list[tuple[str, str, str]]]:
 
 class SEEDS(Dataset):
     name = "seeds"
-    citation = "Matran-Fernandez et al. 2019, Scientific Data 6:186, doi:10.17605/OSF.IO/WA3QK"
-    license = "see the OSF project (the paper is CC-BY-4.0)"
-    url = "https://osf.io/wa3qk/"
-    device = (
-        "BioSemi ActiveTwo: 126-electrode HD grid (9x14, 4 mm) over the finger flexors + 8 monopolar electrodes over "
-        "the extensors, left forearm"
-    )
-    electrode_type = "monopolar"
-    native_fs = 2048.0  # recorded at 16384 Hz, stored at 2048 Hz
-    effective_fs = 2048.0
-    mains_hz = 50.0  # recorded in the UK
-    emg_unit_scale = 1e-6  # assumed microvolts (BioSemi): HD rest RMS 1-2, extensors up to 30
-    hand = "left"
-    # No ring around the forearm: the grid covers the flexors only, the 8 extra electrodes the extensors
-    montages = {"hd_flexor126": list(range(126)), "extensor8": list(range(126, 134))}
-    verified = {
-        "manifest": "OSF API crawl: 25 subjects x (234 trials + calibration file), 59.7 GB",
-        "mat_variables": "subj02 Sess2_01_01 opened: emg (134,T) float32, glove (18,T/8) float32, fs_emg=2048, "
-        "fs_glove=256, channels_emg MA1..MN9 + EXG1..8, channels_glove = GLOVE",
-        "emg_preprocessing": "authors: common average reference + zero-phase 10-500 Hz band-pass (not causal)",
-        "glove_units": "normalized 0-1 per sensor with each subject's calibration min/max (seen 0.08-1.5)",
-        "glove_signs": "thumb and finger flexions canonical as stored (s01, 2/3 sessions); spreads and wrist not "
-        "verifiable from the instructed movements",
-        "movements": "s01: the movement string of each file matches MOVEMENTS",
-    }
 
     def subjects(self) -> list[str]:
         return sorted(manifest())
@@ -127,27 +81,50 @@ class SEEDS(Dataset):
                 raw_dir / name, variable_names=["emg", "glove", "fs_emg", "fs_glove", "channels_glove"]
             )
             fs, kin_fs = float(data["fs_emg"][0, 0]), float(data["fs_glove"][0, 0])
-            if (fs, kin_fs) != (self.native_fs, 256.0) or [c.strip() for c in data["channels_glove"]] != GLOVE:
+            if (fs, kin_fs) != (self.config.native_fs, 256.0) or [c.strip() for c in data["channels_glove"]] != list(
+                CYBERGLOVE_18
+            ):
                 raise ValueError(f"{name}: unexpected rates ({fs}, {kin_fs}) or glove channels")
 
-            emg = data["emg"].T.astype(np.float32) * np.float32(self.emg_unit_scale)
+            emg = data["emg"].T.astype(np.float32) * np.float32(self.config.emg_unit_scale)
             glove = data["glove"].T.astype(np.float32)
             kin = glove_to_canonical(glove, CYBERGLOVE_18, FLIPPED, scale=1.0)
-            movement = int(TRIAL.fullmatch(name)[3])
-            trials.append((emg, kin, np.full(len(kin), movement, np.int16)))
+            stimulus = np.zeros(len(kin), np.int16)
+            stimulus[movement_span(kin, kin_fs)] = int(TRIAL.fullmatch(name)[3])
+            trials.append((emg, kin, stimulus))
 
-        emg, kin, stimulus, starts = concat_trials(trials, round(self.native_fs / 256.0))
+        emg, kin, stimulus, starts = concat_trials(trials, round(self.config.native_fs / 256.0))
         info = {
             "condition": "intact",
             "label_source": "measured",
             "kin_units": "rad_uncalibrated",  # 0-1 per sensor, not radians
             "task": "13 instructed finger/hand movements, 6 repetitions each, trials joined",
+            "stimulus_source": "the trial's movement where the glove moves (movement_span), rest elsewhere",
             "stimulus_names": MOVEMENTS,
-            "trial_starts_s": [s / 256.0 for s in starts],
         }
         return Session(
-            subject, session, emg=np.ascontiguousarray(emg), fs=fs, kin=kin, kin_fs=256.0, stimulus=stimulus, info=info
+            subject,
+            session,
+            emg=np.ascontiguousarray(emg),
+            fs=fs,
+            kin=kin,
+            kin_fs=256.0,
+            stimulus=stimulus,
+            info=info,
+            segments=starts,
         )
+
+
+def movement_span(kin: np.ndarray, fs: float) -> slice:
+    """Where the hand moves in a trial. The files have no cue: every trial starts at rest (3-6 s on s01, s02) and
+    the hand moves or holds until it ends or returns. The span runs from the first to the last frame further from
+    the trial's start pose than 20% of its furthest (mean over the sensors, smoothed over 0.1 s; the peaks are 0.05
+    to 0.6 against a quantization step of 1/255)."""
+    kin = kin[:, np.isfinite(kin).any(axis=0)]
+    start_pose = np.median(kin[: round(0.5 * fs)], axis=0)
+    distance = uniform_filter1d(np.abs(kin - start_pose).mean(axis=1), round(0.1 * fs))
+    far = np.flatnonzero(distance > 0.2 * np.percentile(distance, 99))
+    return slice(far[0], far[-1] + 1)
 
 
 def build_manifest() -> None:

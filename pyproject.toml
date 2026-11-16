@@ -27,7 +27,7 @@ dev = ["pytest>=8", "ruff>=0.5", "pre-commit>=3"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-femg = ["hands/*.json", "datasets/*.csv.gz"]
+femg = ["hand/models/*.json", "datasets/config/*.yaml", "datasets/*.csv.gz"]
 
 [tool.ruff]
 src = ["src", "scripts", "tools"]

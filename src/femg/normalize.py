@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 from scipy.ndimage import binary_closing
 
-from femg.joints import JOINT_INDEX
+from femg.hand.joints import JOINT_INDEX
 
 FINGER_FLEX = [JOINT_INDEX[f"{f}_{j}_flex"] for f in ["index", "middle", "ring", "pinky"] for j in ["mcp", "pip"]]
 

@@ -1,0 +1,36 @@
+description: 25 intact subjects, 13 finger movements, a high-density grid over the flexors and a CyberGlove.
+citation: Matran-Fernandez et al. 2019, Scientific Data 6:186, doi:10.17605/OSF.IO/WA3QK
+license: see the OSF project (the paper is CC-BY-4.0)
+url: https://osf.io/wa3qk/
+device: >-
+  BioSemi ActiveTwo: 126-electrode HD grid (9x14, 4 mm) over the finger flexors + 8 monopolar electrodes over the
+  extensors, left forearm
+hand: left
+
+native_fs: 2048  # recorded at 16384 Hz, stored at 2048 Hz
+effective_fs: 2048
+mains_hz: 50  # recorded in the UK
+emg_unit_scale: 1.0e-6  # assumed microvolts (BioSemi): HD rest RMS 1-2, extensors up to 30
+
+electrodes:
+  # Grid channels MA1..MN9: rows A..N (taken as running towards the wrist) of 9 columns. Its place over the finger
+  # flexors (palmar, proximal half) is approximate
+  - {name: grid, kind: monopolar, layout: grid, rows: 14, columns: 9, pitch_mm: 4, center: [345, 0.35], angle_sd: 30, z_sd: 0.1, mirror: true}
+  # The layout of the 8 extensor electrodes is not documented
+  - {name: extensors, kind: monopolar, layout: unknown, n: 8}
+montages:  # no ring around the forearm
+  hd_flexor126: 0-125
+  extensor8: 126-133
+
+notes:
+  manifest: "OSF API crawl: 25 subjects x (234 trials + calibration file), 59.7 GB"
+  mat_variables: >-
+    subj02 Sess2_01_01 opened: emg (134,T) float32, glove (18,T/8) float32, fs_emg=2048, fs_glove=256, channels_emg
+    MA1..MN9 + EXG1..8, channels_glove = CYBERGLOVE_18 sensor names
+  emg_preprocessing: "authors: common average reference + zero-phase 10-500 Hz band-pass (not causal)"
+  glove_units: normalized 0-1 per sensor with each subject's calibration min/max (seen 0.08-1.5)
+  glove_signs: >-
+    thumb and finger flexions canonical as stored (s01, 2/3 sessions); spreads and wrist not verifiable from the
+    instructed movements
+  movements: "s01: the movement string of each file matches MOVEMENTS"
+  stimulus: "no cue in the files; s01, s02 Sess1: every trial starts with 3-6 s of rest (movement_span)"

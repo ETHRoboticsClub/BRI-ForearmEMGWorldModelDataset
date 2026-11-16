@@ -4,7 +4,7 @@ import numpy as np
 
 from femg.datasets.base import Dataset, Session
 from femg.download import RemoteFile
-from femg.joints import JOINT_INDEX, N_JOINTS
+from femg.hand.joints import FINGER_FLEXIONS, JOINT_INDEX, N_JOINTS
 
 ZENODO = "https://zenodo.org/records/19453843/files"
 MD5 = {
@@ -30,45 +30,13 @@ MD5 = {
     20: "3e64b600e7e7617b19666ec2ad8b997c",
 }
 
-# "Angle 1..15" (MediaPipe, degrees, 180 = straight). Order not documented: inferred from correlations on
-# Subject_01. To confirm with figures/figure_angles.png of the authors' repo.
-ANGLES = [
-    "thumb_cmc_flex",
-    "thumb_mcp_flex",
-    "thumb_ip_flex",
-    "index_mcp_flex",
-    "index_pip_flex",
-    "index_dip_flex",
-    "middle_mcp_flex",
-    "middle_pip_flex",
-    "middle_dip_flex",
-    "ring_mcp_flex",
-    "ring_pip_flex",
-    "ring_dip_flex",
-    "pinky_mcp_flex",
-    "pinky_pip_flex",
-    "pinky_dip_flex",
-]
+# "Angle 1..15" (MediaPipe, degrees, 180 = straight): the 15 finger flexions, thumb to pinky, base to tip. Order not
+# documented: inferred from correlations on Subject_01. To confirm with figures/figure_angles.png of the authors' repo.
+ANGLES = FINGER_FLEXIONS
 
 
 class EMGFK(Dataset):
     name = "emg_fk"
-    citation = "Colot et al. 2026, arXiv:2604.22499, doi:10.5281/zenodo.19453843"
-    license = "CC-BY-4.0"
-    url = "https://zenodo.org/records/19453843"
-    device = "MindRove 8-channel dry-electrode armband, 20 cm from the wrist"
-    electrode_type = "monopolar"
-    native_fs = 500.0
-    effective_fs = 500.0
-    mains_hz = 50.0  # recorded in Belgium
-    emg_unit_scale = 1e-6  # files say volts, but std ~60 means microvolts
-    montages = {"ring8": list(range(8))}
-    # Zenodo reports a ~300 ms shift between EMG and angles, direction unknown: to estimate (roadmap)
-    kin_lag_s = 0.0
-    verified = {
-        "angle_order": "inferred from correlations, not confirmed",
-        "emg_unit": "inferred from amplitude",
-    }
 
     def subjects(self) -> list[str]:
         return [f"s{i:02d}" for i in range(1, 21)]
@@ -87,7 +55,7 @@ class EMGFK(Dataset):
         path = raw_dir / f"Subject_{int(subject[1:]):02d}.fif"
         raw = mne.io.read_raw_fif(path, preload=False, verbose="ERROR")
         fs = raw.info["sfreq"]
-        emg = raw.get_data(picks=[f"EMG {i}" for i in range(1, 9)]).T.astype(np.float32) * self.emg_unit_scale
+        emg = raw.get_data(picks=[f"EMG {i}" for i in range(1, 9)]).T.astype(np.float32) * self.config.emg_unit_scale
         angles = raw.get_data(picks=[f"Angle {i}" for i in range(1, 16)]).T.astype(np.float32)
 
         kin = np.full((len(angles), N_JOINTS), np.nan, np.float32)

@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from femg.hand import HandMap, available_hands
+from femg.hand.mapping import HandMap, available_hands
 from tools.explorer.data import Store
 
 FRONTEND = Path(__file__).resolve().parent / "front" / "dist"
@@ -15,7 +15,7 @@ def create_app(data: Path, hand_port: int | None, host: str = "127.0.0.1") -> Fa
     store = Store(data)
     hand = None
     if hand_port:
-        from femg.hand import HandScene
+        from femg.hand.scene import HandScene
 
         hand = HandScene(hand_port, host=host)
 

@@ -25,7 +25,8 @@ export interface Details extends Summary {
   joints: string[]
   measured_joints: number[]
   kin_lag_s: number
-  verified: Record<string, string>
+  description: string
+  notes: Record<string, string>
   stimuli: number[]
   emg_stats: { floor: number[]; active: number[] }
   kin_stats: { low: (number | null)[]; high: (number | null)[] }

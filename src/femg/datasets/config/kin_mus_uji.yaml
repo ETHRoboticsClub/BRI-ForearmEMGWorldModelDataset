@@ -1,0 +1,29 @@
+description: 22 intact subjects, 26 activities of daily living with real objects. The most natural movements of the pool.
+citation: Jarque-Bou et al. 2019, Scientific Data 6:270, doi:10.5281/zenodo.3469380
+license: CC-BY-4.0
+url: https://zenodo.org/records/3469380
+device: Biometrics DataLOG, 7 SX230 dry bipolar electrodes on 7 forearm spots (gain 1000, 20-460 Hz)
+hand: right
+
+native_fs: 1000
+effective_fs: 1000
+mains_hz: 50  # recorded in Spain
+emg_unit_scale: 1.0e-3  # millivolts: std 0.04-0.09, quantization step 0.0007
+
+electrodes:
+  # 7 muscle spots along the forearm, no ring. They come from a 30-spot grid (Jarque-Bou et al. 2018, JNER 15:207),
+  # not transcribed yet: unknown positions
+  - {name: spots, kind: bipolar, layout: unknown, n: 7}
+montages:
+  spots7: 0-6
+
+notes:
+  md5: both files downloaded, md5 matches Zenodo
+  structure: >-
+    EMG_KIN_v4 (1716 = 22 subjects x 26 ADLs x 3 phases): Subject, ADL, Phase, time, Kinematic_data (T,18) deg at
+    100 Hz, EMG_data (envelope, not used); RAW_EMG (572): Subject, ADL, time (from 0.001 s at 1 kHz), Raw_EMG (T,7)
+  angle_order: "paper Table 2; S1: MCP2/MCP3 flexion correlate 0.92, p2-p98 ranges anatomical"
+  angle_signs: Table 3 (fingers separated+, radial+, flexion+); thumb CMC pair mapped from the grasp test (see ANGLES)
+  time_axis: "kinematic 'time' is on the raw EMG clock (S1 ADL1: kin 2.6-5.94 s, raw 0.001-5.94 s)"
+  emg_unit: inferred from amplitude
+  gaps: "s21 ADL25 phase 1 and s22 ADL25 phases 2-3 are empty (1x1) records: NaN kinematics there"

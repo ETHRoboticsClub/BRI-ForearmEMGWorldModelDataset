@@ -13,7 +13,7 @@ function status(rule: HandRule, measured: Set<string>) {
   return { text: `fixed ${deg(rule.fallback)}`, tone: 'text-muted' }
 }
 
-/** Every joint of the hand and the label that drives it (src/femg/hands/<hand>.csv). */
+/** Every joint of the hand and the label that drives it (src/femg/hand/models/<hand>.json). */
 export function HandMap() {
   const { rules, details } = useExplorer(useShallow((s) => ({ rules: s.handMap, details: s.details })))
   const measured = new Set(details?.measured_joints.map((j) => details.joints[j]) ?? [])

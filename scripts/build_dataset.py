@@ -34,8 +34,10 @@ def build_subject(dataset, subject, processor, raw_dir: Path, out_dir: Path, ove
 
 
 def build_dataset(dataset, processor, percent, raw_dir: Path, out_dir: Path, workers: int, overwrite: bool) -> int:
-    if dataset.effective_fs < processor.fs:
-        print(f"[{dataset.name}] skipped: its effective rate {dataset.effective_fs} Hz is below fs={processor.fs}")
+    if dataset.config.effective_fs < processor.fs:
+        print(
+            f"[{dataset.name}] skipped: its effective rate {dataset.config.effective_fs} Hz is below fs={processor.fs}"
+        )
         return 0
 
     subjects = first_percent(dataset.subjects(), percent)

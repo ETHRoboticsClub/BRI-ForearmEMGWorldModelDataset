@@ -1,3 +1,3 @@
-from femg.joints import CANONICAL_JOINTS, N_JOINTS
+from femg.hand.joints import CANONICAL_JOINTS, N_JOINTS
 
 __all__ = ["CANONICAL_JOINTS", "N_JOINTS"]

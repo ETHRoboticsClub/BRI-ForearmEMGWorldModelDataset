@@ -1,6 +1,6 @@
 # Hand mapping files
 
-One JSON file per hand model: which canonical label (`src/femg/joints.py`) drives each joint of the model.
+One JSON file per hand model: which canonical label (`src/femg/hand/joints.py`) drives each joint of the model.
 The explorer (`python -m tools.explorer`) lists every file here in its hand menu, and so does `scripts/view_hand.py --hand`.
 
 ```json
@@ -19,9 +19,9 @@ The explorer (`python -m tools.explorer`) lists every file here in its hand menu
 ```
 
 - `model`, `entry`: the mujoco-menagerie robot and entry point (downloaded once by mujoco-menagerie). Or instead
-  `builder`: `"module:function"` returning an `MjSpec` or `MjModel`. E.g. `"femg.hand_models:myo_hand"` builds the
+  `builder`: `"module:function"` returning an `MjSpec` or `MjModel`. E.g. `"femg.hand.builders:myo_hand"` builds the
   MyoSuite hand from the `myo-sim` package (`pip install myo-sim`) and removes the arm, so only the hand is shown.
-  Write such a function in `src/femg/hand_models.py` to adapt a model (remove parts, joints) without copying its files.
+  Write such a function in `src/femg/hand/builders.py` to adapt a model (remove parts, joints) without copying its files.
 - `landmarks`: an index MCP flexion joint and two bodies across the palm (thumb side, little-finger side). They define
   the hand's directions (palmar, radial, distal) for the checks and the camera.
 - `joints`: every joint of the model, once:
@@ -53,7 +53,7 @@ Swinging across the palm only shows once the thumb is lifted: with the thumb fla
 ## The datasets
 
 A hand file serves every dataset: the dataset readers (`src/femg/datasets`) deliver the canonical convention of
-`src/femg/joints.py` (flexion, finger spread and radial deviation > 0; the thumb pair as above), so in 0-1 units
+`src/femg/hand/joints.py` (flexion, finger spread and radial deviation > 0; the thumb pair as above), so in 0-1 units
 1 is always flexed / spread / radial. Sensors that run the other way are flipped in the reader, from the instructed
 movements of each dataset:
 
@@ -66,9 +66,6 @@ movements of each dataset:
 | GREAT (raw CyberGlove) | none | open > rest on the 3 spreads, power raises thumb roll and lowers thumb abduction (4/4 sessions) |
 | NinaPro DB3, DB4 | no kinematics (cue only): the hand stays open | |
 
-`python scripts/check_signs.py` repeats these tests on `data/processed` and fails when a sign is wrong. Run it after
-changing a reader or adding a dataset (add its instructed movements to `TESTS`).
-
 SEEDS records the left forearm: its angles are shown on the right-hand models (same joint angles, mirrored hand).
 
 ## Add a hand
@@ -78,7 +75,7 @@ SEEDS records the left forearm: its angles are shown on the right-hand models (s
 
    ```bash
    python -m tools.hands template leap_hand --title "LEAP Hand" \
-       --palmar-joint if_mcp --radial-body if_bs --ulnar-body rf_bs > src/femg/hands/leap_hand.json
+       --palmar-joint if_mcp --radial-body if_bs --ulnar-body rf_bs > src/femg/hand/models/leap_hand.json
    ```
 
 2. Fill `label` (and adjust `at_0`/`at_1`) using `moves`: flexions close `palmar`, the index spread goes `radial`, the

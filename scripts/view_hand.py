@@ -6,7 +6,7 @@ import numpy as np
 import viser
 from mjviser import Viewer
 
-from femg.hand import HandMap, available_hands, label_text, set_pose
+from femg.hand.mapping import HandMap, available_hands, label_text, set_pose
 from femg.normalize import as_array, normalize_kin
 
 
