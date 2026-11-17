@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 
+from femg.electrodes import ElectrodeLayout
 from femg.hand.joints import N_JOINTS
 from femg.normalize import Normalizer
 from femg.signal_utils import causal_filter, pick_nearest, resample, resample_kin
@@ -9,9 +10,11 @@ from femg.virtual_array import VirtualArray
 
 
 class Processor:
-    """Raw session (native rates, volts, canonical joints) -> training-ready session: EMG at fs, filtered; labels at
-    label_fs, aligned to the EMG; the normalization anchors; the EMG on the virtual band, normalized; the joints in
-    0-1. `process` runs every step in order."""
+    """Two stages, each a list of steps run in order:
+    - `process`: raw session (native rates, volts, canonical joints) -> interim (data/interim): EMG at fs, filtered;
+      joints at label_fs, aligned to the EMG; the normalization anchors (meta emg_stats, kin_stats);
+    - `prepare`: interim -> processed (data/processed), what training reads: the EMG on the virtual band, each channel
+      / its own active level; the joints in 0-1."""
 
     def __init__(
         self,
@@ -58,8 +61,11 @@ class Processor:
             "kin_max_repeat_s": self.kin_max_repeat_s,
             "kin_max_gap_s": self.kin_max_gap_s,
             "settle_s": self.settle_s,
-            "virtual_array": self.virtual_array.settings(),
         }
+
+    def prepare_settings(self) -> dict:
+        """The settings of a processed session: the interim ones and the virtual array's."""
+        return {**self.settings(), "virtual_array": self.virtual_array.settings()}
 
     def process(self, session, dataset):
         session = self.resample_emg(session)  # before filtering: fewer samples to filter
@@ -67,9 +73,15 @@ class Processor:
         session = self.resample_labels(session)
         session = self.align_labels(session, dataset.config.kin_lag_s)
         session = self.drop_settling(session)
-        session = self.normalize(session)
-        session = self.to_virtual(session, self.virtual_array.inputs(dataset.config.electrodes))
+        session = self.add_stats(session)
         return session
+
+    def prepare(self, emg: np.ndarray, kin: np.ndarray, meta: dict) -> tuple[dict[str, np.ndarray], dict]:
+        """An interim session (emg (T, C) volts, kin (T / r, J) rad, its meta) -> the processed arrays (virtual,
+        labels) and meta."""
+        virtual, info = self.to_virtual(emg, meta)
+        labels = self.normalizer.kin(kin, meta["kin_stats"]).astype(np.float32)
+        return {"virtual": virtual, "labels": labels}, {**meta, **info, "processor": self.prepare_settings()}
 
     def resample_emg(self, session):
         session.emg = resample(session.emg, session.fs, self.fs)
@@ -128,19 +140,21 @@ class Processor:
             session.kin[start : start + n] = np.nan
         return session
 
-    def normalize(self, session):
-        """The anchors (meta emg_stats, kin_stats) and the joints in 0-1 (session.labels)."""
+    def add_stats(self, session):
+        """The normalization anchors: meta emg_stats (per channel), kin_stats (per joint)."""
         session.info["emg_stats"] = self.normalizer.emg_stats(session.emg)
         session.info["kin_stats"] = self.normalizer.kin_stats(session.kin)
-        session.labels = self.normalizer.kin(session.kin, session.info["kin_stats"]).astype(np.float32)
         return session
 
-    def to_virtual(self, session, positions):
-        """The EMG / active level on the virtual band, each virtual channel / its own active level (session.virtual,
-        (T, H * A)). Its anchors: meta virtual_stats; virtual electrodes no real one covers stay 0."""
-        emg = self.normalizer.emg(session.emg, session.info["emg_stats"])
-        virtual = self.virtual_array(emg, positions).reshape(len(emg), -1)
-        session.info["virtual_stats"] = self.normalizer.emg_stats(virtual)
-        session.info["virtual_covered"] = self.virtual_array.covered(positions).ravel().tolist()
-        session.virtual = self.normalizer.emg(virtual, session.info["virtual_stats"])
-        return session
+    def to_virtual(self, emg: np.ndarray, meta: dict) -> tuple[np.ndarray, dict]:
+        """The EMG / active level on the virtual band (T, H * A), each virtual channel / its own active level (meta
+        virtual_stats); virtual electrodes no real one covers stay 0."""
+        positions = self.virtual_array.inputs(ElectrodeLayout.from_meta(meta))
+        virtual = self.virtual_array(self.normalizer.emg(emg, meta["emg_stats"]), positions).reshape(len(emg), -1)
+        stats = self.normalizer.emg_stats(virtual)
+        info = {
+            "virtual_stats": stats,
+            "virtual_covered": self.virtual_array.covered(positions).ravel().tolist(),
+            "n_virtual": virtual.shape[1],
+        }
+        return self.normalizer.emg(virtual, stats), info

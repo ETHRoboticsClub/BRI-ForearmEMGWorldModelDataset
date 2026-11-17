@@ -1,10 +1,10 @@
-# One build stage per dataset -> data/processed/<dataset>, pushed to S3 with `dvc push`.
-# Raw data is not tracked (it can be downloaded again): run scripts/pull_data.py before `dvc repro`.
+# data/raw -> data/interim/<dataset> (common format) -> data/processed/<dataset> (training) -> data/processed/calibration,
+# pushed to S3 with `dvc push`. Raw data is not tracked (it can be downloaded again): run scripts/pull_data.py first.
 stages:
-  build:
+  interim:
     foreach: ${datasets}
     do:
-      cmd: python scripts/build_dataset.py --dataset ${item} --overwrite
+      cmd: python scripts/build_dataset.py --dataset ${item} --stage interim --overwrite
       deps:
         - src/femg
         - scripts/build_dataset.py
@@ -12,4 +12,31 @@ stages:
         - percent
         - processor
       outs:
+        - data/interim/${item}
+  processed:
+    foreach: ${datasets}
+    do:
+      cmd: python scripts/build_dataset.py --dataset ${item} --stage processed --overwrite
+      deps:
+        - src/femg
+        - scripts/build_dataset.py
+        - data/interim/${item}
+      params:
+        - percent
+        - processor
+      outs:
         - data/processed/${item}
+  calibration:  # the calibration baseline over every dataset
+    cmd: python scripts/build_dataset.py --stage calibration
+    deps:
+      - src/femg
+      - scripts/build_dataset.py
+      - data/processed/emg_fk  # one line per entry of datasets in params.yaml
+      - data/processed/ninapro_db2
+      - data/processed/ninapro_db8
+      - data/processed/ninapro_db7
+      - data/processed/great
+    params:
+      - datasets
+    outs:
+      - data/processed/calibration

@@ -3,9 +3,9 @@ percent: 100        # percentage of subjects per dataset
 workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
 processor:
-  fs: 500
+  fs: 200
   label_fs: 100
-  highpass: 10
+  highpass: 3
   notch: true
   calib_s: 30
   rms_window_s: 0.1 # moving-RMS window (s) of the EMG anchors

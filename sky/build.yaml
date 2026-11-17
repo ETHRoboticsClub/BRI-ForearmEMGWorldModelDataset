@@ -42,9 +42,9 @@ run: |
   mkdir -p ~/femg-raw data && ln -sfn ~/femg-raw data/raw   # downloads live outside the synced workdir
   if [ -n "$PERCENT" ]; then
     python scripts/pull_data.py --percent "$PERCENT"
-    python scripts/build_dataset.py --percent "$PERCENT" --out data/dev
+    python scripts/build_dataset.py --percent "$PERCENT" --interim data/dev/interim --out data/dev/processed
     exit 0
   fi
   python scripts/pull_data.py     # phase 1: raw files (cached on the machine's disk)
-  dvc repro                       # phase 2: one build stage per dataset
+  dvc repro                       # phase 2: interim and processed per dataset, then calibration
   dvc push

@@ -16,67 +16,53 @@
 
 #cetz.canvas({
   import cetz.draw: *
-  let size = (3.2, 2.4)
-  let (x1, x2, x3, x4, x5, x6, x7) = (0, 4.2, 8.4, 12.6, 16.8, 21.0, 25.2)
-  let (emg-y, mid-y, kin-y) = (0, -1.9, -3.8)
+  let (fw, fh) = (18.4, 6.6)
+  frame(fw, fh)
+  let size = (2.2, 1.55)
   let half = size.at(0) / 2
+  let (x1, x2, x3) = (1.6, 4.1, 6.6) // per signal
+  let (x4, x5, x6, x7) = (9.3, 11.8, 14.3, 16.8) // together
+  let (emg-y, kin-y) = (4.85, 1.55)
+  let mid-y = (emg-y + kin-y) / 2
 
-  title((-1.8, 2.45), [Processing: one session, from raw files to training data (`Processor.process`)])
-
-  panel((-1.8, -1.55), (10.2, 1.9), [EMG])
-  node((x1, emg-y), "data", [load_session], detail: [2 kHz · volts · drift, mains], size: size, traces: (
-    trace(raw),
-  ))
-  node((x2, emg-y), "step", [resample_emg], detail: [→ 500 Hz, anti-aliased], size: size, traces: (
-    trace(every(raw, 4)),
-  ))
-  node((x3, emg-y), "step", [filter_emg], detail: [causal 10 Hz high-pass + notch], size: size, traces: (
-    trace(every(clean, 4)),
-  ))
+  // a: the EMG
+  row-label((0.3, fh - 0.3), [a], [EMG], color: blue)
+  card((x1, emg-y), [raw, 2 kHz], size: size, traces: (trace(raw),))
+  card((x2, emg-y), [500 Hz], size: size, traces: (trace(every(raw, 4)),))
+  card((x3, emg-y), [high-pass, notch], size: size, traces: (trace(every(clean, 4)),))
   arrow((x1 + half, emg-y), (x2 - half, emg-y))
   arrow((x2 + half, emg-y), (x3 - half, emg-y))
 
-  panel((-1.8, kin-y - 1.55), (10.2, kin-y + 1.9), [Kinematics + stimulus])
-  node((x1, kin-y), "data", [load_session], detail: [glove · native rate, held samples], size: size, traces: (
-    trace(glove-held, color: orange),
-  ))
-  node((x2, kin-y), "step", [resample_labels], detail: [→ 100 Hz · NaN if unmeasured], size: size, traces: (
-    trace(glove-100hz, color: orange),
-  ))
+  // b: the joint angles (and the instructed movement)
+  row-label((0.3, kin-y + 1.15), [b], [joint angles], color: orange)
+  card((x1, kin-y), [raw, glove], size: size, traces: (trace(glove-held, color: orange),))
+  card((x2, kin-y), [100 Hz], size: size, traces: (trace(glove-100hz, color: orange),))
   arrow((x1 + half, kin-y), (x2 - half, kin-y))
 
-  node((x4, mid-y), "step", [align_labels], detail: [shift lag · label k ↔ EMG 5k], size: size, traces: (
-    trace(envelope),
-    trace(every(glove-100hz, 1), color: orange),
-  ))
-  node((x5, mid-y), "stats", [normalize], detail: [EMG ÷ active · joints 0-1], size: size, traces: (
-    trace(envelope.map(v => v / active)),
-    trace(glove-100hz, color: orange),
-  ), levels: (level(1, label: [1]),))
-  node((x6, mid-y), "step", [to_virtual], detail: [any layout → 8 channels], size: size, traces: (
-    ..channels.map(trace),
-  ))
-  node((x7, mid-y), "result", [save_session], detail: [atomic write], size: size, traces: (
+  // c: together: aligned, then the two stored stages
+  row-label((x4 - half, fh - 0.3), [c], [])
+  card((x4, mid-y), [aligned], size: size, traces: (trace(envelope), trace(glove-100hz, color: orange)))
+  card((x5, mid-y), [interim], size: size, kind: "result", traces: (
     trace(every(clean, 4).map(v => v / 2)),
     trace(samples(200).map(hand).map(y => 3 * y - 1.5), color: orange),
   ))
-  arrow((x3 + half, emg-y), (x4, emg-y), (x4, mid-y + 1.2))
-  arrow((x2 + half, kin-y), (x4, kin-y), (x4, mid-y - 1.2))
-  arrow((x4 + half, mid-y), (x5 - half, mid-y))
-  arrow((x5 + half, mid-y), (x6 - half, mid-y))
-  arrow((x6 + half, mid-y), (x7 - half, mid-y))
+  card((x6, mid-y), [virtual array], size: size, traces: channels.map(trace))
+  card((x7, mid-y), [processed], size: size, kind: "result", traces: (
+    trace(envelope.map(v => v / active)),
+    trace(glove-100hz, color: orange),
+  ), levels: (level(1),))
+  let join = x4 - half - 0.4 // both signals enter the aligned card from the left
+  arrow((x3 + half, emg-y), (join, emg-y), (join, mid-y + 0.3), (x4 - half, mid-y + 0.3))
+  arrow((x2 + half, kin-y), (join, kin-y), (join, mid-y - 0.3), (x4 - half, mid-y - 0.3))
+  for (a, b) in ((x4, x5), (x5, x6), (x6, x7)) { arrow((a + half, mid-y), (b - half, mid-y)) }
 
-  content((x5, mid-y - 1.55), anchor: "north", text(size: 6.5pt, fill: muted)[
-    Normalizer · meta.json: emg_stats, kin_stats
-  ])
-  content((x6, mid-y - 1.55), anchor: "north", text(size: 6.5pt, fill: muted)[
-    each virtual channel ÷ its active\ (meta.json: virtual_stats)
-  ])
-  content((x7 - half, mid-y - 1.55), anchor: "north-west", text(size: 6.5pt, fill: muted)[
-    *virtual.npy* (T, 8): model input\ *labels.npy* (T/5, 22): targets 0-1\ emg.npy, kin.npy, stimulus.npy\ meta.json
-  ])
-  content((x1 - half, kin-y - 2.0), anchor: "west", text(size: 6.5pt, fill: muted)[
-    #box(std.line(length: 10pt, stroke: 1.2pt + blue)) EMG #h(10pt)
-    #box(std.line(length: 10pt, stroke: 1.2pt + orange)) joint angle
-  ])
+  let below = mid-y - size.at(1) / 2 - 0.12
+  for (x, body) in (
+    (x4, [lag corrected]),
+    (x5, [emg (V) · kin (rad)]),
+    (x6, [÷ active level]),
+    (x7, [virtual · labels 0-1]),
+  ) {
+    content((x, below), anchor: "north", text(size: 6.5pt, fill: muted, body))
+  }
 })

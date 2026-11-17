@@ -73,124 +73,108 @@
 #let readout = (1, 1, 0.6, 0, -0.6, -1, -1, 0)
 #let pose(x) = transpose(x).map(col => col.zip(readout).map(((v, w)) => v * w).sum())
 
-#let forearm(center, offset, skin, r: 0.62) = {
+#let forearm(center, offset, skin, r: 0.85) = {
   import cetz.draw: *
   let (x, y) = center
   circle((x, y), radius: r, fill: rgb("#f3e6dc"), stroke: 0.5pt + muted)
   circle((x, y), radius: r - skin, fill: rgb("#fbf6f2"), stroke: none)
   for k in range(n-ch) {
     let a = 90deg - k * 45deg
-    circle((x + 0.34 * calc.cos(a), y + 0.34 * calc.sin(a)), radius: 0.07, fill: rgb("#c9dcf3"), stroke: 0.4pt + blue)
+    circle((x + 0.46 * calc.cos(a), y + 0.46 * calc.sin(a)), radius: 0.09, fill: rgb("#c9dcf3"), stroke: 0.4pt + blue)
   }
   for i in range(n-ch) {
     let a = 90deg - (i + offset) * 45deg
     let (ex, ey) = (x + r * calc.cos(a), y + r * calc.sin(a))
-    rect((ex - 0.07, ey - 0.07), (ex + 0.07, ey + 0.07), fill: if i == 0 { orange } else { ink }, stroke: none)
+    rect((ex - 0.09, ey - 0.09), (ex + 0.09, ey + 0.09), fill: if i == 0 { orange } else { ink }, stroke: none)
   }
 }
 
-
 #cetz.canvas({
   import cetz.draw: *
-  let h = 2.0 // heatmap height (8 channels)
-  let wide = 2.4 // heatmap width (time)
-  let (y0, y1) = (-h / 2, h / 2)
+  let (fw, fh) = (17.8, 7.8)
+  rect((0, 0), (fw, fh), radius: 0.15, stroke: 0.5pt + rgb("#d8d7d2"), fill: white)
+  let dashed = (paint: muted, thickness: 0.5pt, dash: "dashed")
 
-  title((-0.9, 3.0), [Per-user calibration: rotation from the virtual array, then a small adapter W])
+  // a: the reference band and the new user's, turned (and over thicker skin)
+  let top = 5.6
+  letter((0.3, fh - 0.25), [a])
+  forearm((1.75, top), 0, 0.08)
+  forearm((4.05, top), shift, 0.22)
+  content((1.75, top - 1.05), anchor: "north", text(size: 7pt, fill: muted)[reference])
+  content((4.05, top - 1.05), anchor: "north", text(size: 7pt, fill: muted)[new user])
 
-  // a: the displacement
-  letter((-0.9, 2.3), [a])
-  forearm((0, 0.6), 0, 0.07)
-  forearm((1.65, 0.6), shift, 0.18)
-  math-label((0, -0.15), text(size: 7pt)[reference])
-  math-label((1.65, -0.15), text(size: 7pt)[new user])
-  content((-0.7, -0.75), anchor: "north-west", text(size: 6pt, fill: muted)[
-    band turned by 54°, thicker skin\ (wider pickup)
-  ])
-
-  // b: the rotation search
-  letter((3.2, 2.3), [b])
-  let (s0, s1) = (3.6, 8.4)
-  let (sy0, sy1) = (-0.6, 1.8)
-  content((s0, 2.2), anchor: "north-west", text(size: 7pt, weight: "bold")[Step 3: find the rotation])
+  // b: the rotation search over the virtual array
+  let (s0, s1, sy0, sy1) = (6.6, 16.9, 4.75, 6.95)
+  letter((5.9, fh - 0.25), [b])
   let sx(th) = s0 + (s1 - s0) * th / n-ch
   let (low, high) = (calc.min(..scores), calc.max(..scores))
-  let sy(v) = sy0 + (sy1 - 0.5 - sy0) * (v - low) / (high - low)
-  line((s0, sy0), (s1, sy0), stroke: 0.4pt + muted)
-  line(..thetas.zip(scores).map(((th, v)) => (sx(th), sy(v))), stroke: 0.8pt + blue)
-  line((sx(best), sy0), (sx(best), sy(high)), stroke: (paint: orange, thickness: 0.6pt, dash: "dashed"))
-  content((sx(best) + 0.12, sy(high) + 0.12), anchor: "south-west", text(size: 6pt, fill: orange)[$theta^* = #calc.round(best * 45)°$])
-  for deg in (0, 90, 180, 270) {
-    content((sx(deg / 45), sy0 - 0.05), anchor: "north", text(size: 5pt, fill: muted)[#deg°])
+  let sy(v) = sy0 + (sy1 - sy0) * (v - low) / (high - low)
+  line((s0, sy0 - 0.05), (s1, sy0 - 0.05), stroke: 0.5pt + muted)
+  line((s0, sy0 - 0.05), (s0, sy1), stroke: 0.5pt + muted)
+  for deg in (0, 90, 180, 270, 360) {
+    line((sx(deg / 45), sy0 - 0.05), (sx(deg / 45), sy0 - 0.13), stroke: 0.5pt + muted)
+    content((sx(deg / 45), sy0 - 0.18), anchor: "north", text(size: 6.5pt, fill: muted)[#deg°])
   }
-  content(((s0 + s1) / 2, sy0 - 0.35), anchor: "north", text(size: 6pt)[
-    $"corr"("VirtualArray"(theta) x, "templates")$, any $theta$
-  ])
+  line(..thetas.zip(scores).map(((th, v)) => (sx(th), sy(v))), (sx(n-ch), sy(scores.at(0))), stroke: 1pt + blue)
+  line((sx(best), sy0 - 0.05), (sx(best), sy(high)), stroke: (paint: orange, thickness: 0.8pt, dash: "dashed"))
+  circle((sx(best), sy(high)), radius: 0.07, fill: orange, stroke: none)
+  content((sx(best) + 0.12, sy(high) + 0.04), anchor: "south-west", text(fill: orange)[$theta^*$])
+  content((s0 - 0.15, (sy0 + sy1) / 2), anchor: "east", $rho$)
+  content(((s0 + s1) / 2, sy0 - 0.5), anchor: "north", $theta$)
 
-  // c: the chain on the signals: x -> [V(θ*)] -> x_θ* -> [W] -> x̂
-  let cy = -3.5
-  letter((-0.9, cy + 1.75), [c])
-  content((-0.5, cy + 1.65), anchor: "north-west", text(size: 7pt, weight: "bold")[Step 4: undo it, then fit W on what is left])
-  let op = 1.5 // operator (8 × 8) size
-  let x0 = -0.5
-  let v0 = x0 + wide + 0.5
-  let r0 = v0 + op + 0.5
-  let w0 = r0 + wide + 0.5
-  let z0 = w0 + op + 0.5
-  heatmap(((x0, cy + y0), (x0 + wide, cy + y1)), x-new)
+  // c: the chain on the signals, x -> V(θ*) -> x_θ* -> W -> x̂ -> f
+  let (h, wide, op) = (1.8, 1.95, 1.3)
+  let cy = 1.95
+  let (y0, y1) = (cy - h / 2, cy + h / 2)
+  letter((0.3, 3.55), [c])
+  let x0 = 0.75
+  let v0 = x0 + wide + 0.45
+  let r0 = v0 + op + 0.45
+  let w0 = r0 + wide + 0.45
+  let z0 = w0 + op + 0.45
+  let (e0, e1) = (z0 + wide + 0.45, z0 + wide + 1.5)
+  heatmap(((x0, y0), (x0 + wide, y1)), x-new)
   heatmap(((v0, cy - op / 2), (v0 + op, cy + op / 2)), turn(best), top: 1)
-  heatmap(((r0, cy + y0), (r0 + wide, cy + y1)), x-rot)
+  heatmap(((r0, y0), (r0 + wide, y1)), x-rot)
   heatmap(((w0, cy - op / 2), (w0 + op, cy + op / 2)), adapter, top: 1.1)
-  heatmap(((z0, cy + y0), (z0 + wide, cy + y1)), x-fixed)
-  arrow((x0 + wide + 0.05, cy), (v0 - 0.05, cy))
-  arrow((v0 + op + 0.05, cy), (r0 - 0.05, cy))
-  arrow((r0 + wide + 0.05, cy), (w0 - 0.05, cy))
-  arrow((w0 + op + 0.05, cy), (z0 - 0.05, cy))
-  math-label((x0 + wide / 2, cy + y0), $x$ + text(size: 6pt, fill: muted)[ as worn])
-  math-label((v0 + op / 2, cy - op / 2), $V(theta^*)$ + text(size: 6pt, fill: muted)[\ virtual array])
-  math-label((r0 + wide / 2, cy + y0), $x_(theta^*)$ + text(size: 6pt, fill: muted)[ rotation undone])
-  math-label((w0 + op / 2, cy - op / 2), $W$ + text(size: 6pt, fill: muted)[\ ≈ identity])
-  math-label((z0 + wide / 2, cy + y0), $hat(x) = W x_(theta^*) + b$)
-  content((x0 - 0.12, cy + y1 - 0.12), anchor: "east", text(size: 5.5pt, fill: muted)[1])
-  content((x0 - 0.12, cy + y0 + 0.12), anchor: "east", text(size: 5.5pt, fill: muted)[8])
-  line((x0, cy + y1 + 0.15), (x0 + 0.8, cy + y1 + 0.15), stroke: 0.4pt + muted, mark: (
+  heatmap(((z0, y0), (z0 + wide, y1)), x-fixed)
+  for (a, b) in ((x0 + wide, v0), (v0 + op, r0), (r0 + wide, w0), (w0 + op, z0), (z0 + wide, e0)) {
+    arrow((a + 0.06, cy), (b - 0.06, cy))
+  }
+  rect((e0, cy - 0.5), (e1, cy + 0.5), radius: 0.1, fill: white, stroke: 0.8pt + blue)
+  content(((e0 + e1) / 2, cy), $f_theta$)
+  math-label((x0 + wide / 2, y0), $x$)
+  math-label((v0 + op / 2, cy - op / 2), $V(theta^*)$)
+  math-label((r0 + wide / 2, y0), $x_(theta^*)$)
+  math-label((w0 + op / 2, cy - op / 2), $W$)
+  math-label((z0 + wide / 2, y0), $hat(x) = W x_(theta^*) + b$)
+  // links to a and b: the new user's band gives x, θ* gives V
+  line((4.05, top - 1.45), (4.05, 3.4), (x0 + wide / 2, 3.4), (x0 + wide / 2, y1 + 0.1), stroke: dashed, mark: (
     end: "stealth",
     fill: muted,
-    scale: 0.4,
+    scale: 0.5,
   ))
-  content((x0 + 0.85, cy + y1 + 0.15), anchor: "west", text(size: 5.5pt, fill: muted)[$t$])
+  line((sx(best), sy0 - 0.65), (sx(best), 3.75), (v0 + op / 2, 3.75), (v0 + op / 2, cy + op / 2 + 0.1), stroke: (
+    paint: orange,
+    thickness: 0.5pt,
+    dash: "dashed",
+  ), mark: (end: "stealth", fill: orange, scale: 0.5))
 
-  // d: frozen encoder and its prediction
-  let z1 = z0 + wide
-  let (e0, e1) = (z1 + 0.6, z1 + 1.9)
-  arrow((z1 + 0.1, cy), (e0, cy))
-  rect((e0, cy - 0.55), (e1, cy + 0.55), radius: 0.1, fill: white, stroke: 0.8pt + blue)
-  content(((e0 + e1) / 2, cy + 0.1), $f_theta$)
-  content(((e0 + e1) / 2, cy - 0.25), text(size: 5.5pt, fill: muted)[frozen])
-  letter((e1 + 0.45, cy + 1.75), [d])
-  let (p0, p1) = (e1 + 0.75, e1 + 3.8)
-  arrow((e1, cy), (p0 - 0.05, cy))
-  line((p0, cy + y1), (p0, cy + y0), (p1, cy + y0), stroke: 0.4pt + muted)
-  sparkline(((p0 + 0.05, cy + y0 + 0.1), (p1, cy + y1 - 0.1)), (
+  // d: the frozen model's output
+  let (p0, p1) = (e1 + 0.55, e1 + 3.1)
+  letter((p0 - 0.3, 3.55), [d])
+  arrow((e1 + 0.06, cy), (p0 - 0.06, cy))
+  line((p0, y1), (p0, y0), (p1, y0), stroke: 0.5pt + muted)
+  sparkline(((p0 + 0.05, y0 + 0.1), (p1, y1 - 0.1)), (
     trace(pose(x-new), color: orange),
     trace(pose(x-rot), color: blue),
     trace(pose(x-fixed), color: green),
     trace(pose(x-ref), color: ink),
   ))
-  math-label(((p0 + p1) / 2, cy + y0), $hat(y)$)
-  content((p1 + 0.1, cy + y1 - 0.1), anchor: "north-west", text(size: 6pt)[
-    #text(fill: ink)[true] \ #text(fill: green)[rotation + $W$] \ #text(fill: blue)[rotation only] \ #text(fill: orange)[as worn]
-  ])
-
-  // the protocol
-  let (q0, q1) = (9.3, 2.2)
-  content((q0, q1), anchor: "north-west", text(size: 7pt, weight: "bold")[Calibration of a new user (about 1 min)])
-  content((q0, q1 - 0.4), anchor: "north-west", text(size: 6.5pt)[
-    + Guided actions: rest, fist, open hand, wrist flexion / extension.
-    + Gains: `Normalizer` anchors of this recording (active level per channel).
-    + Rotation: $theta^* = arg max_theta "corr"("VirtualArray"(theta) x, "templates")$, the band's\
-      angle in any step (the templates: the same actions in the training data).
-    + Adapter: $min_(W, b) sum_t ell(f_theta (W x_(theta^*)(t) + b), y(t))$, $W$ from the identity,\
-      $theta$ fixed: only what the rotation leaves (skin, pickup width).
+  content((p1 + 0.15, y1 + 0.05), anchor: "north-west", text(size: 7pt)[
+    #text(fill: ink)[$y$] \
+    #text(fill: orange)[$f_theta (x)$] \
+    #text(fill: blue)[$f_theta (x_(theta^*))$] \
+    #text(fill: green)[$f_theta (hat(x))$]
   ])
 })
