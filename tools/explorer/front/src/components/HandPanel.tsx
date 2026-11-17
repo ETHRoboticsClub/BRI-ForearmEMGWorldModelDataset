@@ -1,7 +1,8 @@
-import { Network, Rotate3d, Tag } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { Network, Tag } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
-import { playback } from '../lib/playback'
+import { valueAt } from '../lib/api'
+import { playback, usePlayback } from '../lib/playback'
 import { useTheme } from '../lib/theme'
 import { useExplorer } from '../store'
 import { HandMap } from './HandMap'
@@ -90,19 +91,15 @@ function useHandSync(enabled: boolean, labels: boolean) {
 interface HandOptions {
   on: boolean
   map: boolean
-  free: boolean
   toggle: () => void
   toggleMap: () => void
-  toggleFree: () => void
 }
 
 export const useHandLabels = create<HandOptions>((set, get) => ({
   on: true,
   map: false,
-  free: true,
   toggle: () => set({ on: !get().on }),
   toggleMap: () => set({ map: !get().map }),
-  toggleFree: () => set({ free: !get().free }),
 }))
 
 /** Free rotation over the viser view: drag turns the camera about its own axes (no stuck poles), wheel zooms,
@@ -152,7 +149,7 @@ function Trackball() {
 /** Sync dot and the labels switch, for the section header. */
 export function HandActions() {
   const connected = useHandLink((s) => s.connected)
-  const { on, toggle, map, toggleMap, free, toggleFree } = useHandLabels()
+  const { on, toggle, map, toggleMap } = useHandLabels()
   const hands = useExplorer((s) => s.hands)
   const hand = useExplorer((s) => s.hand)
   const setHand = useExplorer((s) => s.setHand)
@@ -163,11 +160,6 @@ export function HandActions() {
       <button onClick={toggleMap} title="Joint ↔ label map" aria-pressed={map}
         className={`grid size-6 place-items-center rounded-md ${map ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
         <Network size={12} />
-      </button>
-      <button onClick={toggleFree} title={free ? 'Free rotation (on): drag, wheel, double-click to reset' : 'Free rotation (off): viser controls'}
-        aria-pressed={free}
-        className={`grid size-6 place-items-center rounded-md ${free ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
-        <Rotate3d size={12} />
       </button>
       <button onClick={toggle} title="Joint labels" aria-pressed={on}
         className={`grid size-6 place-items-center rounded-md ${on ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>
@@ -181,7 +173,6 @@ export function HandView() {
   const port = useExplorer((s) => s.handPort)
   const labels = useHandLabels((s) => s.on)
   const map = useHandLabels((s) => s.map)
-  const free = useHandLabels((s) => s.free)
   const hand = useExplorer((s) => s.hand)
   useHandSync(port !== null, labels)
   const [box, size] = useSize<HTMLDivElement>()
@@ -194,9 +185,28 @@ export function HandView() {
         : <iframe key={hand} title="hand" src={`${location.protocol}//${location.hostname}:${port}`}
             className="absolute top-0 left-0 origin-top-left border-0 bg-bg"
             style={{ width: size.width / scale, height: size.height / scale, transform: `scale(${scale})` }} />}
-      {port !== null && free && !map && <Trackball />}
+      {port !== null && !map && <Trackball />}
+      {port !== null && !map && <NoLabelNotice />}
       {map && <HandMap />}
     </div>
+  )
+}
+
+/** Where the session has no kinematic label (between trials, after a join), the hand keeps its last pose. */
+function NoLabelNotice() {
+  const data = useExplorer((s) => s.data)
+  const [missing, setMissing] = useState(false)
+  const check = useCallback(() => {
+    const kin = data?.kin
+    setMissing(!!kin && kin.joints.length > 0 && kin.values.every((v) => valueAt(kin, v, playback.time) === null))
+  }, [data])
+  useEffect(check, [check])
+  usePlayback(check)
+  if (!missing) return null
+  return (
+    <p className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-md bg-raised px-2 py-1 text-xs text-muted">
+      No kinematics here: the hand keeps its last pose
+    </p>
   )
 }
 

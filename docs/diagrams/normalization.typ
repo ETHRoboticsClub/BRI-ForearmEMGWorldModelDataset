@@ -19,14 +19,14 @@
   let (x1, x2, x3, x4) = (0, 4.8, 9.6, 14.4)
   let (emg-y, kin-y) = (0, -3.8)
 
-  title((-1.9, 2.45), [Normalization: two anchors per session, no labels needed])
+  title((-1.9, 2.45), [Normalization (`Normalizer`, at build time): two anchors per session, no labels needed])
 
   panel((-1.9, -1.55), (16.3, 1.9), [EMG, per channel])
-  node((x1, emg-y), "data", [emg.npy], detail: [two devices, 5× apart (V)], traces: (
+  node((x1, emg-y), "data", [Filtered EMG], detail: [two devices, 5× apart (V)], traces: (
     trace(raw-dry),
     trace(raw-bipolar, color: orange),
   ))
-  node((x2, emg-y), "stats", [Envelope + anchors], detail: [100 ms RMS · p10, p95 (log)], log: true, traces: (
+  node((x2, emg-y), "stats", [emg_stats], detail: [100 ms RMS · p10, p95 (log)], log: true, traces: (
     trace(env-dry),
     trace(env-bipolar, color: orange),
   ), levels: (
@@ -35,22 +35,22 @@
     level(active-bipolar, color: orange, label: [p95]),
     level(percentile(env-bipolar, 10), color: orange, label: [p10]),
   ))
-  node((x3, emg-y), "step", [normalize_emg], detail: [envelope ÷ active], size: (3.4, 1.2))
-  node((x4, emg-y), "result", [Model input], detail: [same scale for every device], traces: (
+  node((x3, emg-y), "step", [Normalizer.emg], detail: [EMG ÷ active], size: (3.4, 1.2))
+  node((x4, emg-y), "result", [→ to_virtual], detail: [same scale (envelope shown)], traces: (
     trace(rescale(env-dry, 0, active-dry)),
     trace(rescale(env-bipolar, 0, active-bipolar), color: orange),
   ), levels: (level(1, label: [1]),))
 
-  arrow((x1 + 1.7, emg-y), (x2 - 1.7, emg-y), label: [build time])
+  arrow((x1 + 1.7, emg-y), (x2 - 1.7, emg-y), label: [measure])
   arrow((x2 + 1.7, emg-y), (x3 - 1.7, emg-y), label: [meta.json])
-  arrow((x3 + 1.7, emg-y), (x4 - 1.7, emg-y), label: [load time])
+  arrow((x3 + 1.7, emg-y), (x4 - 1.7, emg-y), label: [apply])
 
   panel((-1.9, kin-y - 1.55), (16.3, kin-y + 1.9), [Kinematics, per joint])
-  node((x1, kin-y), "data", [kin.npy], detail: [calibrated (rad) vs raw glove], traces: (
+  node((x1, kin-y), "data", [Joint angles], detail: [calibrated (rad) vs raw glove], traces: (
     trace(angle-calibrated),
     trace(angle-raw-glove, color: orange),
   ))
-  node((x2, kin-y), "stats", [Anchors], detail: [p2 = open · p98 = closed], traces: (
+  node((x2, kin-y), "stats", [kin_stats], detail: [p2 = open · p98 = closed], traces: (
     trace(angle-calibrated),
     trace(angle-raw-glove, color: orange),
   ), levels: (
@@ -59,15 +59,15 @@
     level(anchors(angle-calibrated).at(1), color: blue, label: [p98]),
     level(anchors(angle-calibrated).at(0), color: blue, label: [p2]),
   ))
-  node((x3, kin-y), "step", [normalize_kin], detail: [(θ − low) ÷ (high − low)], size: (3.4, 1.2))
-  node((x4, kin-y), "result", [Target], detail: [0 open … 1 closed], traces: (
+  node((x3, kin-y), "step", [Normalizer.kin], detail: [(θ − low) ÷ (high − low)], size: (3.4, 1.2))
+  node((x4, kin-y), "result", [labels.npy], detail: [targets: 0 open … 1 closed], traces: (
     trace(rescale(angle-calibrated, ..anchors(angle-calibrated))),
     trace(rescale(angle-raw-glove, ..anchors(angle-raw-glove)), color: orange),
   ))
 
-  arrow((x1 + 1.7, kin-y), (x2 - 1.7, kin-y), label: [build time])
+  arrow((x1 + 1.7, kin-y), (x2 - 1.7, kin-y), label: [measure])
   arrow((x2 + 1.7, kin-y), (x3 - 1.7, kin-y), label: [meta.json])
-  arrow((x3 + 1.7, kin-y), (x4 - 1.7, kin-y), label: [load time])
+  arrow((x3 + 1.7, kin-y), (x4 - 1.7, kin-y), label: [apply])
 
   content((x1 - 1.7, kin-y - 2.0), anchor: "west", text(size: 6.5pt, fill: muted)[
     #box(std.line(length: 10pt, stroke: 1.2pt + blue)) dry monopolar armband (EMG-FK) #h(10pt)

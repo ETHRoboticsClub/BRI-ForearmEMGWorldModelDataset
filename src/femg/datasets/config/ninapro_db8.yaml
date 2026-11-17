@@ -1,0 +1,26 @@
+description: 10 intact subjects and 2 transradial amputees, 9 movements, calibrated glove on the other hand.
+citation: Krasoulis et al. 2019, Frontiers in Neuroscience 13:891
+license: see https://ninapro.hevs.ch (cite the paper)
+url: https://ninapro.hevs.ch/instructions/DB8.html
+device: 16 Delsys Trigno IM in two rows of 8 around the right forearm, 3 and 5.5 cm below the elbow
+hand: right
+
+native_fs: 2000
+effective_fs: 1111  # "sampled at a rate of 1111 Hz ... upsampled to 2 kHz"
+mains_hz: 50
+
+electrodes:
+  # Krasoulis et al. 2019: "two rows of eight equally spaced sensors ... placed 3 and 5.5 cm, respectively, below the
+  # elbow" (of 26 cm). Rotation, row stagger and which channels form which row: not documented (rows assumed aligned)
+  - {name: rings, kind: bipolar, layout: ring, n: 8, z: [0.115, 0.212], angle_sd: 180, z_sd: 0.05, mirror: true}
+montages:
+  ring8: 0-7  # assumed: first row = channels 1-8 (not documented)
+
+notes:
+  mat_variables: "S1_E1_A3 opened: emg (T,16) float32 V, glove (T,18) no NaN, restimulus 0-9"
+  glove_order: correlation structure matches CYBERGLOVE_18
+  glove_rate: "S1 A1: each glove frame is held (~29 Hz steps at 2 kHz); the processor interpolates over them"
+  ring8: row membership of channels not documented
+  glove_signs: >-
+    NOT flipped: calibrated glove and no spread/deviation movement to check against. DB2/DB7 (raw) needed
+    NINAPRO_FLIPPED; check DB8 visually in the explorer

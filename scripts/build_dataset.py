@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from femg.datasets import DATASETS, first_percent
-from femg.processor import PROCESSORS
+from femg.processor import Processor
 from femg.save import is_saved, make_meta, save_session, session_folder, write_index
 
 GB_PER_WORKER = 2.0  # peak RAM of one session (largest: NinaPro DB8 A1, a ~1 GB file)
@@ -34,8 +34,10 @@ def build_subject(dataset, subject, processor, raw_dir: Path, out_dir: Path, ove
 
 
 def build_dataset(dataset, processor, percent, raw_dir: Path, out_dir: Path, workers: int, overwrite: bool) -> int:
-    if dataset.effective_fs < processor.fs:
-        print(f"[{dataset.name}] skipped: its effective rate {dataset.effective_fs} Hz is below fs={processor.fs}")
+    if dataset.config.effective_fs < processor.fs:
+        print(
+            f"[{dataset.name}] skipped: its effective rate {dataset.config.effective_fs} Hz is below fs={processor.fs}"
+        )
         return 0
 
     subjects = first_percent(dataset.subjects(), percent)
@@ -82,8 +84,7 @@ def main() -> None:
 
     params = yaml.safe_load(Path(args.params).read_text())
     processor_settings = dict(params["processor"])
-    processor_class = PROCESSORS[processor_settings.pop("name")]
-    processor = processor_class(**processor_settings)
+    processor = Processor(**processor_settings)
 
     percent = args.percent if args.percent is not None else params["percent"]
     workers = args.workers or params["workers"]

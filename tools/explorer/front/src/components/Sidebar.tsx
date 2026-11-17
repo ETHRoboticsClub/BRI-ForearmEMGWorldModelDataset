@@ -22,8 +22,11 @@ function SessionCard({ details }: { details: Details }) {
   const rows: [string, string][] = [
     ['EMG', `${details.n_channels} ch · ${details.electrode_type} · ${details.native_fs / 1000} kHz`],
     ['labels', `${details.label_source} · ${details.measured_joints.length}/22 joints`],
+    ['view', details.display_montage === 'all' ? 'all channels' : `${details.display_montage} montage`],
     ['task', details.stimuli.length ? `${details.stimuli.length} movements` : 'free motion'],
   ]
+  const names = Object.values(details.stimulus_names ?? {})
+  if (names.length) rows.push(['moves', names.join(', ')])
   return (
     <div className="space-y-1 border-t border-line p-3 text-[11.5px]">
       {rows.map(([label, value]) => (

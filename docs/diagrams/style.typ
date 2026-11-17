@@ -62,6 +62,25 @@
   }
 }
 
+// Blue > 0, orange < 0, white 0; `top` is the value of full color
+#let heat-color(v, top: 1) = {
+  let w = calc.min(calc.abs(v) / top, 1)
+  color.mix((if v >= 0 { blue } else { orange }, w * 100%), (white, (1 - w) * 100%))
+}
+
+// One cell per value of a (rows, columns) array, colored with heat-color
+#let heatmap(area, rows, top: 1) = {
+  import cetz.draw: *
+  let ((x0, y0), (x1, y1)) = area
+  let (dx, dy) = ((x1 - x0) / rows.at(0).len(), (y1 - y0) / rows.len())
+  for (i, row) in rows.enumerate() {
+    for (j, v) in row.enumerate() {
+      rect((x0 + j * dx, y1 - (i + 1) * dy), (x0 + (j + 1) * dx, y1 - i * dy), fill: heat-color(v, top: top), stroke: none)
+    }
+  }
+  rect((x0, y0), (x1, y1), stroke: 0.4pt + muted)
+}
+
 #let node(center, kind, title, detail: none, size: (3.4, 2.4), traces: (), levels: (), log: false) = {
   import cetz.draw: *
   let (x, y) = center
@@ -97,3 +116,7 @@
 }
 
 #let title(position, body) = cetz.draw.content(position, anchor: "west", text(size: 11pt, weight: "bold", body))
+
+// Paper-style figures: panel letters and math labels
+#let math-label(position, body, anchor: "north") = cetz.draw.content(position, anchor: anchor, padding: 0.1, body)
+#let letter(position, body) = cetz.draw.content(position, anchor: "north-west", text(size: 10pt, weight: "bold", body))

@@ -1,0 +1,7 @@
+n_angles: 8  # virtual electrodes around the forearm, every 45 deg from palmar
+heights: [0.13]  # z of the virtual ring (0 elbow, 1 wrist): the mean ring height of the datasets, 3.4 cm below the elbow
+width_around_cm: 1.5  # ring8 spacing: 3 cm
+width_along_cm: 1.5  # the nearest ring dominates; 1.0 ignored GREAT's staggered row when rebuilding a channel
+reach_cm: 5.0  # a virtual electrode with no real one this close is not covered (output 0)
+common_average: true  # monopolar channels lose their common average first
+layouts: [ring]  # electrode groups it is built from: spots (uncertain position) replaced ring channels

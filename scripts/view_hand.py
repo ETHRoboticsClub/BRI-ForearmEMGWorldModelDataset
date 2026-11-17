@@ -6,8 +6,8 @@ import numpy as np
 import viser
 from mjviser import Viewer
 
-from femg.hand import HandMap, available_hands, label_text, set_pose
-from femg.normalize import as_array, normalize_kin
+from femg.hand.mapping import HandMap, available_hands, label_text, set_pose
+from femg.normalize import Normalizer, as_array
 
 
 def main():
@@ -20,12 +20,14 @@ def main():
     args = parser.parse_args()
 
     meta = json.loads((args.session / "meta.json").read_text())
+    if not meta["measured_joints"]:
+        raise SystemExit(f"{meta['key']} has no kinematics ({meta['label_source']} labels only): nothing to show")
     stats = meta["kin_stats"]
     kin = np.load(args.session / "kin.npy")
     unit = not args.rad
     centers = (as_array(stats["mean"]) - as_array(stats["low"])) / (as_array(stats["high"]) - as_array(stats["low"]))
     if unit:
-        kin = normalize_kin(kin, stats)
+        kin = Normalizer.kin(kin, stats)
     stimulus = np.load(args.session / "stimulus.npy")
     label_fs = meta["label_fs"]
     hand = HandMap(args.hand)
@@ -57,6 +59,7 @@ def main():
         info.content = (
             f"**{meta['key']}** on {hand.title} ({meta['label_source']}, {meta['kin_units']})  \n"
             f"t = {k / label_fs:.2f} s / {len(kin) / label_fs:.0f} s, stimulus = {stimulus[k]}"
+            + ("" if np.isfinite(kin[k]).any() else "  \n**no label here** (fallback pose)")
         )
 
     reset(model, data)

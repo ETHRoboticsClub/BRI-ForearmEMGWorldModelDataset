@@ -22,7 +22,7 @@ export function JointBars() {
     details.joints.forEach((name, j) => {
       const y = j * rowHeight
       const row = data?.kin.joints.indexOf(j) ?? -1
-      const value = row >= 0 && data ? valueAt(data.kin, data.kin.values[row], playback.time) : undefined
+      const value = row >= 0 && data ? valueAt(data.kin, data.kin.values[row], playback.time) ?? undefined : undefined
       const low = details.kin_stats.low[j]
       const high = details.kin_stats.high[j]
       const unit = value === undefined ? undefined

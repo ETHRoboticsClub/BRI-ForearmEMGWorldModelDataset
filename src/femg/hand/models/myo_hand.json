@@ -1,6 +1,6 @@
 {
   "title": "MyoHand (MyoSuite)",
-  "builder": "femg.hand_models:myo_hand",
+  "builder": "femg.hand.builders:myo_hand",
   "landmarks": {
     "palmar_joint": "mcp2_flexion_r",
     "radial_body": "2proxph_r",

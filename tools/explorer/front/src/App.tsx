@@ -35,7 +35,9 @@ function useKeys() {
 }
 
 function EmgOptions() {
-  const { emgScale, channels, set } = useExplorer(useShallow((s) => ({ emgScale: s.emgScale, channels: s.channels, set: s.set })))
+  const { emgScale, channels, montage, set } = useExplorer(useShallow((s) => ({
+    emgScale: s.emgScale, channels: s.channels, montage: s.details?.display_montage ?? 'ring8', set: s.set,
+  })))
   return (
     <>
       <Segmented value={emgScale} onChange={(v) => set({ emgScale: v })} options={[
@@ -43,7 +45,7 @@ function EmgOptions() {
         { value: 'active', label: '÷ active', title: 'divided by the p95 of the 100 ms RMS (default normalization)' },
       ]} />
       <Segmented value={channels} onChange={(v) => set({ channels: v })} options={[
-        { value: 'ring8', label: 'ring8' },
+        { value: 'ring8', label: montage, title: 'the 8-electrode ring, or the dataset\'s small montage when it has none' },
         { value: 'all', label: 'all' },
       ]} />
     </>

@@ -4,17 +4,9 @@ import sys
 import mujoco
 import numpy as np
 
-from femg.hand import (
-    HANDS,
-    HandMap,
-    available_hands,
-    dump_mapping,
-    hand_frame,
-    load_model,
-    neutral_pose,
-    tips_center,
-)
-from femg.joints import CANONICAL_JOINTS
+from femg.hand.geometry import hand_frame, neutral_pose, tips_center
+from femg.hand.joints import CANONICAL_JOINTS
+from femg.hand.mapping import MODELS, HandMap, available_hands, dump_mapping, load_model
 
 # Where the fingertip must go when a label closes (moves from 0 to 1).
 # Thumb, from the instructed NinaPro movements: the glove's "thumb rotation" (thumb_cmc_flex) rises in fists, grips
@@ -114,7 +106,7 @@ def check(args):
 def main():
     parser = argparse.ArgumentParser(prog="python -m tools.hands", description="Write and check hand mapping files.")
     sub = parser.add_subparsers(required=True)
-    t = sub.add_parser("template", help=f"print a mapping file to fill, e.g. > {HANDS}/<name>.json")
+    t = sub.add_parser("template", help=f"print a mapping file to fill, e.g. > {MODELS}/<name>.json")
     t.add_argument("model", help="mujoco-menagerie name (leap_hand), or a builder module:function returning an MjSpec")
     t.add_argument("--entry", default="right_hand")
     t.add_argument("--title")

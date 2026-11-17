@@ -1,9 +1,8 @@
-datasets: [emg_fk, ninapro_db2, ninapro_db8]
+datasets: [emg_fk, ninapro_db2, ninapro_db8, ninapro_db7, great]
 percent: 100        # percentage of subjects per dataset
 workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
 processor:
-  name: default
   fs: 500
   label_fs: 100
   highpass: 10
@@ -12,3 +11,7 @@ processor:
   rms_window_s: 0.1 # moving-RMS window (s) of the EMG anchors
   emg_anchors: [10, 95]  # percentiles of the moving RMS per channel: floor (~rest), active (~strong contraction)
   kin_anchors: [2, 98]   # percentiles per joint mapped to 0 (~open hand) and 1 (~closed hand)
+  kin_lowpass: 6         # Hz, zero-phase on the labels: smooths glove quantization steps and camera jitter
+  kin_max_repeat_s: 0.1  # a frame repeated up to this long is a late frame, interpolated over (longer = still hand)
+  kin_max_gap_s: 0.1     # NaN gaps in the kinematics up to this long are interpolated, longer ones stay NaN
+  settle_s: 0.2          # no label for the first 0.2 s of every segment (high-pass transient after a start or join)

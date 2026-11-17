@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from femg.joints import CANONICAL_JOINTS
+from femg.hand.joints import CANONICAL_JOINTS
 
 INDEX_COLUMNS = [
     "key",
@@ -37,6 +37,10 @@ def is_saved(folder: Path, settings: dict) -> bool:
 
 def make_meta(dataset, session, processor) -> dict:
     key = f"{dataset.name}/{session.subject}/{session.name}"
+    if len(dataset.config.electrodes) != session.emg.shape[1]:
+        raise ValueError(
+            f"{key}: {session.emg.shape[1]} channels but {len(dataset.config.electrodes)} electrodes described"
+        )
     measured = [j for j in range(len(CANONICAL_JOINTS)) if np.isfinite(session.kin[:, j]).any()]
     meta = {
         "key": key,
@@ -46,7 +50,7 @@ def make_meta(dataset, session, processor) -> dict:
         "label_source": "cue",  # default when the dataset has no kinematics; session.info overrides it
         "kin_units": None,
         **session.info,
-        **dataset.metadata(),
+        **dataset.config.metadata(),
         "n_channels": session.emg.shape[1],
         "n_samples": len(session.emg),
         "n_labels": len(session.kin),
@@ -55,6 +59,9 @@ def make_meta(dataset, session, processor) -> dict:
         "label_fs": processor.label_fs,
         "joints": CANONICAL_JOINTS,
         "measured_joints": measured,
+        # [start, end) label frames of each continuous recording; a frame whose kin row is all NaN has no label
+        "segments": [[a, b] for a, b in zip(session.segments, [*session.segments[1:], len(session.kin)], strict=True)],
+        "n_virtual": session.virtual.shape[1],
         "processor": processor.settings(),
     }
     return meta
@@ -67,6 +74,8 @@ def save_session(folder: Path, session, meta: dict) -> None:
     np.save(tmp / "emg.npy", session.emg.astype(np.float32))
     np.save(tmp / "kin.npy", session.kin.astype(np.float32))
     np.save(tmp / "stimulus.npy", session.stimulus.astype(np.int16))
+    np.save(tmp / "virtual.npy", session.virtual.astype(np.float32))
+    np.save(tmp / "labels.npy", session.labels.astype(np.float32))
     (tmp / "meta.json").write_text(json.dumps(meta, indent=1))
     shutil.rmtree(folder, ignore_errors=True)
     tmp.rename(folder)

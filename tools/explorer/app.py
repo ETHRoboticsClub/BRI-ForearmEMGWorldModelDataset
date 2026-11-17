@@ -1,10 +1,11 @@
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from femg.hand import HandMap, available_hands
+from femg.hand.mapping import HandMap, available_hands
 from tools.explorer.data import Store
 
 FRONTEND = Path(__file__).resolve().parent / "front" / "dist"
@@ -14,7 +15,7 @@ def create_app(data: Path, hand_port: int | None, host: str = "127.0.0.1") -> Fa
     store = Store(data)
     hand = None
     if hand_port:
-        from femg.hand import HandScene
+        from femg.hand.scene import HandScene
 
         hand = HandScene(hand_port, host=host)
 
@@ -102,7 +103,9 @@ def create_app(data: Path, hand_port: int | None, host: str = "127.0.0.1") -> Fa
                     s = store.session(message["key"])
                     frame = min(max(int(message["t"] * s.label_fs), 0), len(s.kin) - 1)
                     unit = message.get("unit", True)
-                    hand.show((s.kin_unit if unit else s.kin)[frame], unit, s.kin_center)
+                    pose = (s.kin_unit if unit else s.kin)[frame]
+                    if np.isfinite(pose).any():  # no label (between trials): the hand keeps its last pose
+                        hand.show(pose, unit, s.kin_center)
         except WebSocketDisconnect:
             pass
 

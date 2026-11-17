@@ -1,0 +1,26 @@
+description: 20 intact subjects moving their fingers freely, MediaPipe hand angles. The closest to the target band.
+citation: Colot et al. 2026, arXiv:2604.22499, doi:10.5281/zenodo.19453843
+license: CC-BY-4.0
+url: https://zenodo.org/records/19453843
+device: MindRove 8-channel dry-electrode armband, 20 cm from the wrist
+hand: right
+
+native_fs: 500
+effective_fs: 500
+mains_hz: 50  # recorded in Belgium
+emg_unit_scale: 1.0e-6  # the files say volts, but std ~60 means microvolts
+# Zenodo reports a ~300 ms shift between EMG and angles without its direction. scripts/tests/estimate_kin_lag.py on s01: a
+# linear EMG -> pose decoder fits best with the pose 480 ms after the EMG, against 240-300 ms on NinaPro DB2/DB7 and
+# 60-180 ms on GREAT, whose clocks are shared: the angles are late, kin[t] shows the hand 0.3 s earlier.
+kin_lag_s: -0.3
+
+electrodes:
+  # 20 cm from the wrist of a 26 cm forearm; neither the angle of channel 1 nor the channel direction is documented
+  - {name: band, kind: monopolar, layout: ring, n: 8, z: 0.2308, angle_sd: 180, z_sd: 0.05, mirror: true}
+montages:
+  ring8: 0-7
+
+notes:
+  angle_order: inferred from correlations, not confirmed
+  emg_unit: inferred from amplitude
+  kin_lag: direction estimated on s01 only (scripts/tests/estimate_kin_lag.py), size from the authors
