@@ -9,7 +9,7 @@ native_fs: 500
 effective_fs: 500
 mains_hz: 50  # recorded in Belgium
 emg_unit_scale: 1.0e-6  # the files say volts, but std ~60 means microvolts
-# Zenodo reports a ~300 ms shift between EMG and angles without its direction. scripts/estimate_kin_lag.py on s01: a
+# Zenodo reports a ~300 ms shift between EMG and angles without its direction. scripts/tests/estimate_kin_lag.py on s01: a
 # linear EMG -> pose decoder fits best with the pose 480 ms after the EMG, against 240-300 ms on NinaPro DB2/DB7 and
 # 60-180 ms on GREAT, whose clocks are shared: the angles are late, kin[t] shows the hand 0.3 s earlier.
 kin_lag_s: -0.3
@@ -23,4 +23,4 @@ montages:
 notes:
   angle_order: inferred from correlations, not confirmed
   emg_unit: inferred from amplitude
-  kin_lag: direction estimated on s01 only (scripts/estimate_kin_lag.py), size from the authors
+  kin_lag: direction estimated on s01 only (scripts/tests/estimate_kin_lag.py), size from the authors

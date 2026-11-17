@@ -61,6 +61,7 @@ def make_meta(dataset, session, processor) -> dict:
         "measured_joints": measured,
         # [start, end) label frames of each continuous recording; a frame whose kin row is all NaN has no label
         "segments": [[a, b] for a, b in zip(session.segments, [*session.segments[1:], len(session.kin)], strict=True)],
+        "n_virtual": session.virtual.shape[1],
         "processor": processor.settings(),
     }
     return meta
@@ -73,6 +74,8 @@ def save_session(folder: Path, session, meta: dict) -> None:
     np.save(tmp / "emg.npy", session.emg.astype(np.float32))
     np.save(tmp / "kin.npy", session.kin.astype(np.float32))
     np.save(tmp / "stimulus.npy", session.stimulus.astype(np.int16))
+    np.save(tmp / "virtual.npy", session.virtual.astype(np.float32))
+    np.save(tmp / "labels.npy", session.labels.astype(np.float32))
     (tmp / "meta.json").write_text(json.dumps(meta, indent=1))
     shutil.rmtree(folder, ignore_errors=True)
     tmp.rename(folder)

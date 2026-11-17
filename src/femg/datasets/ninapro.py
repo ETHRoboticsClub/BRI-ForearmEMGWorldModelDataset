@@ -31,8 +31,7 @@ def glove_to_canonical(
     glove: np.ndarray, sensors: dict[str, str], flipped: tuple[str, ...] = (), scale: float = np.pi / 180
 ) -> np.ndarray:
     """Glove columns -> canonical joints. sensors: column name -> joint, in column order (CYBERGLOVE_22, ...).
-    flipped: joints whose sensor runs against the canonical sign. scale: file units -> rad (degrees by default; 1 keeps
-    unitless values such as SEEDS' 0-1)."""
+    flipped: joints whose sensor runs against the canonical sign. scale: file units -> rad (degrees by default)."""
     kin = np.full((len(glove), N_JOINTS), np.nan, np.float32)
     for column, joint in enumerate(sensors.values()):
         sign = -1.0 if joint in flipped else 1.0
@@ -43,20 +42,19 @@ def glove_to_canonical(
 def read_ninapro_session(
     path: Path,
     fs: float,
-    sensors: dict[str, str] | None,
+    sensors: dict[str, str],
     subject: str,
     session: str,
     info: dict,
-    emg_scale: float = 1.0,
     flipped: tuple[str, ...] = (),
 ) -> Session:
-    """sensors: glove column name -> canonical joint, or None to ignore the glove (cue-only datasets)."""
-    data = load_mat(path, ["emg", "restimulus"] + (["glove"] if sensors else []))
+    """sensors: glove column name -> canonical joint."""
+    data = load_mat(path, ["emg", "restimulus", "glove"])
     n = min(len(v) for v in data.values())  # restimulus is sometimes one sample shorter
 
-    emg = np.ascontiguousarray(data["emg"][:n] * np.float32(emg_scale), np.float32)  # volts (DB2 S1: std ~4e-5)
+    emg = np.ascontiguousarray(data["emg"][:n], np.float32)  # volts (DB2 S1: std ~4e-5)
     kin = None
-    if sensors and "glove" in data:
+    if "glove" in data:
         kin = glove_to_canonical(data["glove"][:n].astype(np.float32), sensors, flipped)
     stimulus = None
     if "restimulus" in data:
@@ -141,53 +139,4 @@ class NinaProDB7(Dataset):
         }
         return read_ninapro_session(
             path, self.config.native_fs, CYBERGLOVE_18, subject, session, info, flipped=NINAPRO_FLIPPED
-        )
-
-
-class NinaProDB3(Dataset):
-    name = "ninapro_db3"
-
-    LEFT_AMPUTATED = ["s05", "s06"]  # the others are right-hand amputees
-
-    def subjects(self) -> list[str]:
-        return [f"s{i:02d}" for i in range(1, 12)]
-
-    def files_to_download(self, subject: str) -> list[RemoteFile]:
-        i = int(subject[1:])
-        members = tuple(f"S{i}_{e}_A1.mat" for e in self.sessions(subject))
-        return [RemoteFile(url=f"{BASE_URL}/db3_Preproc/s{i}_0.zip", name=f"DB3_s{i}.zip", unzip=members)]
-
-    def sessions(self, subject: str) -> list[str]:
-        return ["E1", "E2", "E3"]  # E3: finger force patterns
-
-    def load_session(self, subject: str, session: str, raw_dir: Path) -> Session:
-        path = raw_dir / f"S{int(subject[1:])}_{session}_A1.mat"
-        info = {
-            "condition": "amputee_transradial",
-            "amputated_side": "left" if subject in self.LEFT_AMPUTATED else "right",
-            "label_source": "cue",
-            "kin_units": None,
-        }
-        return read_ninapro_session(path, self.config.native_fs, None, subject, session, info)
-
-
-class NinaProDB4(Dataset):
-    name = "ninapro_db4"
-
-    def subjects(self) -> list[str]:
-        return [f"s{i:02d}" for i in range(1, 11)]
-
-    def files_to_download(self, subject: str) -> list[RemoteFile]:
-        i = int(subject[1:])
-        members = tuple(f"S{i}_{e}_A1.mat" for e in self.sessions(subject))
-        return [RemoteFile(url=f"{BASE_URL}/DB4_Preproc/s{i}.zip", name=f"DB4_s{i}.zip", unzip=members)]
-
-    def sessions(self, subject: str) -> list[str]:
-        return ["E1", "E2", "E3"]
-
-    def load_session(self, subject: str, session: str, raw_dir: Path) -> Session:
-        path = raw_dir / f"S{int(subject[1:])}_{session}_A1.mat"
-        info = {"condition": "intact", "label_source": "cue", "kin_units": None}
-        return read_ninapro_session(
-            path, self.config.native_fs, None, subject, session, info, self.config.emg_unit_scale
         )

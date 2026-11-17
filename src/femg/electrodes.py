@@ -14,7 +14,8 @@ class ElectrodeGroup:
     angle: degrees around the forearm, 0 palmar midline, 90 radial (thumb side), 180 dorsal, 270 ulnar, for either
     arm. z: fraction of the forearm from the elbow crease (0) to the wrist crease (1), < 0 on the upper arm. NaN:
     unknown. Their relative positions are known; where the group sits only up to a shift: angle_sd (deg, >= 180 any
-    rotation), z_sd, and mirror (the channels may run the other way round)."""
+    rotation), z_sd, and mirror (the channels may run the other way round). layout: how it was described (ring,
+    grid, spot, unknown, points)."""
 
     name: str
     kind: str  # bipolar or monopolar
@@ -23,6 +24,7 @@ class ElectrodeGroup:
     angle_sd: float = 0.0
     z_sd: float = 0.0
     mirror: bool = False
+    layout: str = "points"
 
     def __post_init__(self):
         if self.kind not in KINDS:
@@ -34,10 +36,15 @@ class ElectrodeGroup:
         return len(self.angles)
 
     @classmethod
-    def ring(cls, name: str, kind: str, n: int, z: float | list[float], first_angle: float = 0.0, **placement):
-        """n electrodes evenly spaced around the forearm, in increasing angle. Several z: one ring at each, in turn."""
-        points = [(first_angle + i * 360 / n, at) for at in np.atleast_1d(z) for i in range(n)]
-        return cls.from_points(name, kind, points, **placement)
+    def ring(
+        cls, name: str, kind: str, n: int, z: float | list[float], first_angle: float | list[float] = 0.0, **placement
+    ):
+        """n electrodes evenly spaced around the forearm, in increasing angle. Several z: one ring at each, in turn;
+        first_angle per ring (rows staggered) or one for all."""
+        heights = np.atleast_1d(z)
+        starts = np.broadcast_to(np.atleast_1d(first_angle), heights.shape)
+        points = [(start + i * 360 / n, at) for at, start in zip(heights, starts, strict=True) for i in range(n)]
+        return cls.from_points(name, kind, points, layout="ring", **placement)
 
     @classmethod
     def grid(cls, name: str, kind: str, rows: int, columns: int, pitch_mm: float, center: list[float], **placement):
@@ -47,17 +54,17 @@ class ElectrodeGroup:
         angle0 = center[0] - degrees * (columns - 1) / 2
         z0 = center[1] - fraction * (rows - 1) / 2
         points = [(angle0 + c * degrees, z0 + r * fraction) for r in range(rows) for c in range(columns)]
-        return cls.from_points(name, kind, points, **placement)
+        return cls.from_points(name, kind, points, layout="grid", **placement)
 
     @classmethod
     def spot(cls, name: str, kind: str, angle: float, z: float, **placement):
         """One electrode over a muscle."""
-        return cls.from_points(name, kind, [(angle, z)], **placement)
+        return cls.from_points(name, kind, [(angle, z)], layout="spot", **placement)
 
     @classmethod
     def unknown(cls, name: str, kind: str, n: int):
         """n electrodes whose positions are not documented."""
-        return cls.from_points(name, kind, [(np.nan, np.nan)] * n)
+        return cls.from_points(name, kind, [(np.nan, np.nan)] * n, layout="unknown")
 
     @classmethod
     def from_points(cls, name: str, kind: str, points, **placement):
@@ -132,14 +139,20 @@ class ElectrodeLayout:
             "electrode_type": self.kind,
             "electrodes": electrodes,
             "electrode_groups": {
-                g.name: {"angle_sd": g.angle_sd, "z_sd": g.z_sd, "mirror": g.mirror} for g in self.groups
+                g.name: {"angle_sd": g.angle_sd, "z_sd": g.z_sd, "mirror": g.mirror, "layout": g.layout}
+                for g in self.groups
             },
             "montages": self.montages,
         }
 
-    def positions(self) -> np.ndarray:
-        """(C, 3) float32: angle (deg), z, bipolar (0/1); NaN where unknown. The channel encoder's input."""
-        rows = [(a, z, g.kind == "bipolar") for g in self.groups for a, z in zip(g.angles, g.zs, strict=True)]
+    def positions(self, layouts: tuple[str, ...] | None = None) -> np.ndarray:
+        """(C, 3) float32: angle (deg), z, bipolar (0/1); NaN where unknown, and for the groups whose layout is not in
+        `layouts` (all groups when None)."""
+        rows = [
+            (a, z, g.kind == "bipolar") if layouts is None or g.layout in layouts else (np.nan, np.nan, np.nan)
+            for g in self.groups
+            for a, z in zip(g.angles, g.zs, strict=True)
+        ]
         return np.array(rows, np.float32).reshape(-1, 3)
 
     def place_randomly(self, rng: np.random.Generator) -> np.ndarray:

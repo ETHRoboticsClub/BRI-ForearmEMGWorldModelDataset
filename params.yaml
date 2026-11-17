@@ -1,9 +1,8 @@
-datasets: [emg_fk, ninapro_db2, ninapro_db8, ninapro_db7, ninapro_db3, ninapro_db4, seeds, kin_mus_uji, great]
+datasets: [emg_fk, ninapro_db2, ninapro_db8, ninapro_db7, great]
 percent: 100        # percentage of subjects per dataset
 workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
 processor:
-  name: default
   fs: 500
   label_fs: 100
   highpass: 10

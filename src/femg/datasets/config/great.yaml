@@ -9,8 +9,13 @@ native_fs: 2000
 effective_fs: 2000
 mains_hz: 50  # recorded in the UK
 
-electrodes:  # as NinaPro DB8
-  - {name: rings, kind: bipolar, layout: ring, n: 8, z: [0.05, 0.2], angle_sd: 180, z_sd: 0.1, mirror: true}
+electrodes:
+  # Dryad: "First row: Starting at extensor carpi ulnaris muscle", "Second row: Positioned between the electrodes of
+  # the first row": staggered by half a step. Distances not documented: assumed as NinaPro DB8 (3 and 5.5 cm below
+  # the elbow), hence the larger z_sd. The rotation is not documented (the ECU start gives no channel order): row 1,
+  # nearest the virtual ring, is put at 0 deg. Row 2 at -22.5 deg, not +22.5: each ring rebuilt from the other matches
+  # it better that way (envelope r 0.63 vs 0.48, p1, scripts/tests/test_virtual_array.py)
+  - {name: rings, kind: bipolar, layout: ring, n: 8, z: [0.115, 0.212], first_angle: [0, -22.5], angle_sd: 180, z_sd: 0.1, mirror: true}
 montages:
   ring8: 0-7  # assumed: first row = channels 1-8 (not documented)
 

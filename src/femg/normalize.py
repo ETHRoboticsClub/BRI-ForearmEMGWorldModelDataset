@@ -1,16 +1,17 @@
 import warnings
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.ndimage import binary_closing
 
 from femg.hand.joints import JOINT_INDEX
+from femg.signal_utils import envelope, rms
 
 FINGER_FLEX = [JOINT_INDEX[f"{f}_{j}_flex"] for f in ["index", "middle", "ring", "pinky"] for j in ["mcp", "pip"]]
 
 
-# Montages the tools show and compare by default, in order of preference: the 8-electrode ring, else the small
-# montage of a dataset without one (SEEDS extensors, KIN-MUS UJI spots), else all channels.
-DISPLAY_MONTAGES = ("ring8", "extensor8", "spots7")
+# Montages the tools show and compare by default, in order of preference: the 8-electrode ring, else all channels.
+DISPLAY_MONTAGES = ("ring8",)
 
 
 def display_montage(meta: dict) -> tuple[str, list[int]]:
@@ -22,7 +23,7 @@ def display_montage(meta: dict) -> tuple[str, list[int]]:
 
 
 def has_kinematics(meta: dict) -> bool:
-    """False for cue-only sessions (NinaPro DB3, DB4): no joint is measured."""
+    """False for cue-only sessions: no joint is measured."""
     return bool(meta.get("measured_joints"))
 
 
@@ -30,14 +31,65 @@ def as_array(values) -> np.ndarray:
     return np.array([np.nan if v is None else v for v in values], np.float32)
 
 
-def normalize_emg(rms: np.ndarray, emg_stats: dict, channels: list[int]) -> np.ndarray:
-    active = as_array(emg_stats["active"])[channels]
-    return rms / active
+@dataclass(frozen=True)
+class Normalizer:
+    """Puts every session on the same scale, from anchors measured on the session itself: each EMG channel divided by
+    its active level (a high percentile of its moving RMS, ~ strong contraction), each joint mapped to 0 (~ open
+    hand) - 1 (~ closed hand) by two percentiles. `emg_stats` / `kin_stats` measure the anchors (saved in meta.json),
+    `emg` / `kin` apply them."""
 
+    fs: int
+    label_fs: int
+    rms_window_s: float  # moving-RMS window of the EMG anchors
+    calib_s: float  # calib_rms: the RMS of the first calib_s seconds
+    emg_anchors: tuple[float, float]  # percentiles of the moving RMS: floor (~ rest), active (~ strong contraction)
+    kin_anchors: tuple[float, float]  # percentiles per joint: 0 (~ open hand) and 1 (~ closed hand)
 
-def normalize_kin(kin: np.ndarray, kin_stats: dict) -> np.ndarray:
-    open_hand, closed_hand = as_array(kin_stats["low"]), as_array(kin_stats["high"])
-    return (kin - open_hand) / (closed_hand - open_hand)
+    def envelope(self, emg: np.ndarray) -> np.ndarray:
+        """(T, C) -> (T / per label frame, C): the moving RMS the EMG anchors are taken from."""
+        return envelope(emg, self.fs // self.label_fs, max(1, round(self.rms_window_s * self.label_fs)))
+
+    def emg_stats(self, emg: np.ndarray) -> dict:
+        floor, active = np.percentile(self.envelope(emg), self.emg_anchors, axis=0)
+        absolute = np.abs(emg)
+        return {
+            "floor": floor.tolist(),
+            "active": active.tolist(),
+            "rms": rms(emg).tolist(),
+            "calib_rms": rms(emg[: max(1, int(self.calib_s * self.fs))]).tolist(),
+            "median_abs": np.median(absolute, axis=0).tolist(),
+            "p99_abs": np.percentile(absolute, 99, axis=0).tolist(),
+        }
+
+    def kin_stats(self, kin: np.ndarray) -> dict:
+        """None for unmeasured or constant joints."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN columns
+            low, high = np.nanpercentile(kin, self.kin_anchors, axis=0)
+            stats = {
+                "low": low,
+                "high": np.where(high - low > 1e-6, high, np.nan),
+                "mean": np.nanmean(kin, axis=0),
+                "std": np.nanstd(kin, axis=0),
+                "p1": np.nanpercentile(kin, 1, axis=0),
+                "p99": np.nanpercentile(kin, 99, axis=0),
+            }
+        return {name: [float(v) if np.isfinite(v) else None for v in values] for name, values in stats.items()}
+
+    @staticmethod
+    def emg(x: np.ndarray, emg_stats: dict, channels: list[int] | None = None) -> np.ndarray:
+        """EMG (or its RMS) / active level; 0 for channels without one (a virtual electrode no real one covers)."""
+        active = as_array(emg_stats["active"])
+        if channels is not None:
+            active = active[channels]
+        x = np.asarray(x, np.float32)
+        return np.divide(x, active, out=np.zeros_like(x), where=active > 0)
+
+    @staticmethod
+    def kin(kin: np.ndarray, kin_stats: dict) -> np.ndarray:
+        """Joints in 0 (~ open hand) - 1 (~ closed hand); NaN where unmeasured or unlabelled."""
+        open_hand, closed_hand = as_array(kin_stats["low"]), as_array(kin_stats["high"])
+        return (kin - open_hand) / (closed_hand - open_hand)
 
 
 def hand_flexion(kin_norm: np.ndarray) -> np.ndarray:

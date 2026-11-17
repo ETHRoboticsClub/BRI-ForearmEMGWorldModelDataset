@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from femg.normalize import as_array, display_montage, hand_flexion, normalize_kin
+from femg.normalize import Normalizer, as_array, display_montage, hand_flexion
 from femg.signal_utils import envelope
 
 OPEN_SESSIONS = 8
@@ -52,7 +52,7 @@ class Session:
 
     @cached_property
     def kin_unit(self) -> np.ndarray:
-        return normalize_kin(self.kin, self.meta["kin_stats"])
+        return Normalizer.kin(self.kin, self.meta["kin_stats"])
 
     @cached_property
     def kin_center(self) -> np.ndarray:

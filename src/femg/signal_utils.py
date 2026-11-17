@@ -1,5 +1,4 @@
 import math
-import warnings
 from fractions import Fraction
 
 import numpy as np
@@ -119,33 +118,3 @@ def envelope(emg: np.ndarray, samples_per_frame: int, window_frames: int) -> np.
     frames = np.asarray(emg[: n_frames * samples_per_frame], np.float32).reshape(n_frames, samples_per_frame, -1)
     power = (frames**2).mean(axis=1)
     return np.sqrt(uniform_filter1d(power, window_frames, axis=0))
-
-
-def emg_stats(emg, fs, calib_s, samples_per_frame, window_frames, anchors) -> dict:
-    floor, active = np.percentile(envelope(emg, samples_per_frame, window_frames), anchors, axis=0)
-    calib = emg[: max(1, int(calib_s * fs))]
-    absolute = np.abs(emg)
-    return {
-        "floor": floor.tolist(),
-        "active": active.tolist(),
-        "rms": rms(emg).tolist(),
-        "calib_rms": rms(calib).tolist(),
-        "median_abs": np.median(absolute, axis=0).tolist(),
-        "p99_abs": np.percentile(absolute, 99, axis=0).tolist(),
-    }
-
-
-def kin_stats(kin: np.ndarray, anchors) -> dict:
-    """None for unmeasured or constant joints."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN columns
-        low, high = np.nanpercentile(kin, anchors, axis=0)
-        stats = {
-            "low": low,
-            "high": np.where(high - low > 1e-6, high, np.nan),
-            "mean": np.nanmean(kin, axis=0),
-            "std": np.nanstd(kin, axis=0),
-            "p1": np.nanpercentile(kin, 1, axis=0),
-            "p99": np.nanpercentile(kin, 99, axis=0),
-        }
-    return {name: [float(v) if np.isfinite(v) else None for v in values] for name, values in stats.items()}

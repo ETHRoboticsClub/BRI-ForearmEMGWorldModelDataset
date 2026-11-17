@@ -7,7 +7,7 @@ import viser
 from mjviser import Viewer
 
 from femg.hand.mapping import HandMap, available_hands, label_text, set_pose
-from femg.normalize import as_array, normalize_kin
+from femg.normalize import Normalizer, as_array
 
 
 def main():
@@ -27,7 +27,7 @@ def main():
     unit = not args.rad
     centers = (as_array(stats["mean"]) - as_array(stats["low"])) / (as_array(stats["high"]) - as_array(stats["low"]))
     if unit:
-        kin = normalize_kin(kin, stats)
+        kin = Normalizer.kin(kin, stats)
     stimulus = np.load(args.session / "stimulus.npy")
     label_fs = meta["label_fs"]
     hand = HandMap(args.hand)

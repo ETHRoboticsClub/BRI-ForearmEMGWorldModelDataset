@@ -3,10 +3,16 @@ import math
 import numpy as np
 
 from femg.hand.joints import N_JOINTS
-from femg.signal_utils import causal_filter, emg_stats, kin_stats, pick_nearest, resample, resample_kin
+from femg.normalize import Normalizer
+from femg.signal_utils import causal_filter, pick_nearest, resample, resample_kin
+from femg.virtual_array import VirtualArray
 
 
 class Processor:
+    """Raw session (native rates, volts, canonical joints) -> training-ready session: EMG at fs, filtered; labels at
+    label_fs, aligned to the EMG; the normalization anchors; the EMG on the virtual band, normalized; the joints in
+    0-1. `process` runs every step in order."""
+
     def __init__(
         self,
         fs=500,
@@ -21,6 +27,7 @@ class Processor:
         kin_max_repeat_s=0.1,
         kin_max_gap_s=0.1,
         settle_s=0.2,
+        virtual_array: VirtualArray | None = None,
     ):
         if fs % label_fs != 0:
             raise ValueError(f"fs ({fs}) must be a multiple of label_fs ({label_fs})")
@@ -28,10 +35,8 @@ class Processor:
         self.label_fs = label_fs
         self.highpass = highpass
         self.notch = notch
-        self.calib_s = calib_s
-        self.rms_window_s = rms_window_s
-        self.emg_anchors = list(emg_anchors)
-        self.kin_anchors = list(kin_anchors)
+        self.normalizer = Normalizer(fs, label_fs, rms_window_s, calib_s, tuple(emg_anchors), tuple(kin_anchors))
+        self.virtual_array = virtual_array or VirtualArray.load()
         self.kin_lowpass = kin_lowpass
         self.kin_max_repeat_s = kin_max_repeat_s
         self.kin_max_gap_s = kin_max_gap_s
@@ -45,14 +50,15 @@ class Processor:
             "label_fs": self.label_fs,
             "highpass": self.highpass,
             "notch": self.notch,
-            "calib_s": self.calib_s,
-            "rms_window_s": self.rms_window_s,
-            "emg_anchors": self.emg_anchors,
-            "kin_anchors": self.kin_anchors,
+            "calib_s": self.normalizer.calib_s,
+            "rms_window_s": self.normalizer.rms_window_s,
+            "emg_anchors": list(self.normalizer.emg_anchors),
+            "kin_anchors": list(self.normalizer.kin_anchors),
             "kin_lowpass": self.kin_lowpass,
             "kin_max_repeat_s": self.kin_max_repeat_s,
             "kin_max_gap_s": self.kin_max_gap_s,
             "settle_s": self.settle_s,
+            "virtual_array": self.virtual_array.settings(),
         }
 
     def process(self, session, dataset):
@@ -61,7 +67,8 @@ class Processor:
         session = self.resample_labels(session)
         session = self.align_labels(session, dataset.config.kin_lag_s)
         session = self.drop_settling(session)
-        session = self.add_stats(session)
+        session = self.normalize(session)
+        session = self.to_virtual(session, self.virtual_array.inputs(dataset.config.electrodes))
         return session
 
     def resample_emg(self, session):
@@ -121,15 +128,19 @@ class Processor:
             session.kin[start : start + n] = np.nan
         return session
 
-    def add_stats(self, session):
-        window = max(1, round(self.rms_window_s * self.label_fs))
-        session.info["emg_stats"] = emg_stats(
-            session.emg, self.fs, self.calib_s, self.emg_per_label, window, self.emg_anchors
-        )
-        session.info["kin_stats"] = kin_stats(session.kin, self.kin_anchors)
+    def normalize(self, session):
+        """The anchors (meta emg_stats, kin_stats) and the joints in 0-1 (session.labels)."""
+        session.info["emg_stats"] = self.normalizer.emg_stats(session.emg)
+        session.info["kin_stats"] = self.normalizer.kin_stats(session.kin)
+        session.labels = self.normalizer.kin(session.kin, session.info["kin_stats"]).astype(np.float32)
         return session
 
-
-PROCESSORS = {
-    "default": Processor,
-}
+    def to_virtual(self, session, positions):
+        """The EMG / active level on the virtual band, each virtual channel / its own active level (session.virtual,
+        (T, H * A)). Its anchors: meta virtual_stats; virtual electrodes no real one covers stay 0."""
+        emg = self.normalizer.emg(session.emg, session.info["emg_stats"])
+        virtual = self.virtual_array(emg, positions).reshape(len(emg), -1)
+        session.info["virtual_stats"] = self.normalizer.emg_stats(virtual)
+        session.info["virtual_covered"] = self.virtual_array.covered(positions).ravel().tolist()
+        session.virtual = self.normalizer.emg(virtual, session.info["virtual_stats"])
+        return session
