@@ -11,15 +11,18 @@ space and metadata), for training a generic EMG → hand-pose model that can tra
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,dvc]"
 pre-commit install
-dvc pull            # the processed dataset of this commit (S3 access: see HRI-ContinuousTraining/docs/dvc-access.md)
+dvc pull            # the interim and processed data of this commit (S3 access: see HRI-ContinuousTraining/docs/dvc-access.md)
 ```
 
 ## The three phases
 
 ```
  PHASE 1  scripts/pull_data.py       internet  ->  data/raw/<dataset>/         (original files, untouched)
- PHASE 2  scripts/build_dataset.py   data/raw  ->  data/processed/<dataset>/   (common format)
+ PHASE 2  scripts/build_dataset.py   data/raw  ->  data/interim/<dataset>/     (common format: real EMG, joints in rad)
+                                               ->  data/processed/<dataset>/   (training: virtual EMG, joints 0-1)
+                                               ->  data/processed/calibration/ (calibration baseline)
  PHASE 3  the training repo         data/processed  ->  training windows    (see "Read the data")
+                                     data/interim    ->  its own on-the-fly augmentation (band rotation, ...)
 ```
 
 ```bash
@@ -34,11 +37,14 @@ python scripts/build_dataset.py --dataset emg_fk --percent 10  # 2. process them
   same processor settings are skipped. `--overwrite` rebuilds everything: needed after changing a dataset reader,
   which the skip check does not see.
 - `build_dataset.py` only builds subjects whose raw files are present. Processing settings live in `params.yaml`.
-- Raw data is not versioned (it can be downloaded again). `data/processed` is versioned with DVC:
+  It runs three stages, `--stage interim / processed / calibration` (repeatable, default all in order): the
+  processed stage reads only `data/interim`, so changing the virtual array or the calibration does not redo the
+  resampling and filtering. A processed session is rebuilt when its interim session is newer.
+- Raw data is not versioned (it can be downloaded again). `data/interim` and `data/processed` are versioned with DVC:
 
 ```bash
 python scripts/pull_data.py                      # all raw data (DB7 ~34 GB)
-dvc repro                                        # full build, one stage per dataset (params.yaml)
+dvc repro                                        # full build: interim, processed per dataset, then calibration
 dvc push && git add dvc.lock && git commit       # share it
 ```
 
@@ -57,12 +63,13 @@ virtual band (below).
 
 ```python
 session = dataset.load_session(subject, name, raw_dir)  # native rates, EMG in volts, canonical joints in rad
-session = processor.process(session, dataset)  # resample -> filter -> labels -> align -> normalize -> virtual
-save_session(folder, session, make_meta(dataset, session, processor))
+session = processor.process(session, dataset)  # resample -> filter -> labels -> align -> anchors
+save_session(interim_folder, session, make_meta(dataset, session, processor))  # data/interim
+arrays, meta = processor.prepare(emg, kin, meta)  # from the interim session: virtual EMG, joints 0-1
+save_arrays(processed_folder, {**arrays, "stimulus": stimulus}, meta)  # data/processed
 ```
 
-`Processor.process` (`src/femg/processor.py`) is the one call that turns a raw session into training data, a short
-list of steps:
+The `Processor` (`src/femg/processor.py`) holds both stages as short lists of steps. `process`, raw -> interim:
 
 1. `resample_emg`: EMG to `fs` (500 Hz), anti-aliased.
 2. `filter_emg`: causal 10 Hz high-pass + mains notches.
@@ -72,23 +79,32 @@ list of steps:
    steps and tracking jitter.
 4. `align_labels`: correct the dataset's `kin_lag_s` and crop so label `k` ↔ EMG sample `k * fs / label_fs`.
 5. `drop_settling`: no label for the first `settle_s` of every segment (the high-pass rings after a start or join).
-6. `normalize`: the `Normalizer` (`src/femg/normalize.py`) measures the anchors of the session (meta `emg_stats`:
-   floor and active level per channel; `kin_stats`: open and closed hand per joint) and maps the joints to 0-1.
-7. `to_virtual`: the EMG / active level onto the virtual band (`VirtualArray`, below), then each virtual channel /
+6. `add_stats`: the `Normalizer` (`src/femg/normalize.py`) measures the anchors of the session (meta `emg_stats`:
+   floor and active level per channel; `kin_stats`: open and closed hand per joint).
+
+`prepare`, interim -> processed:
+
+1. `to_virtual`: the EMG / active level onto the virtual band (`VirtualArray`, below), then each virtual channel /
    its own active level (meta `virtual_stats`, same `Normalizer`).
+2. the joints to 0-1 (`Normalizer.kin`).
 
-To change the build, edit the steps in `Processor.process`; their settings are `processor` in `params.yaml`.
+To change the build, edit the steps; their settings are `processor` in `params.yaml` (and the virtual array's yaml).
 
-The output has one folder per session, plus `<dataset>/sessions.parquet` (see `src/femg/save.py`):
+Each tree has one folder per session (`<dataset>/<subject>/<session>`, the same in both) and
+`<dataset>/sessions.parquet` (see `src/femg/save.py`):
 
-| File | Shape | Content |
-|---|---|---|
-| `virtual.npy` | (T, 8) | **model input**: the EMG on the virtual band, normalized (1 ~ strong contraction), at `fs` |
-| `labels.npy` | (T/r, 22) | **targets**: the joints in 0 (~ open hand) - 1 (~ closed hand), NaN = no label, at `label_fs` |
-| `emg.npy` | (T, C) | the filtered EMG of the real electrodes, volts (inspection, other arrays) |
-| `kin.npy` | (T/r, 22) | the joints in radians, NaN = no label |
-| `stimulus.npy` | (T/r,) | the instructed movement, 0 rest, -1 none |
-| `meta.json` | | dataset, electrodes, segments, the anchors (`emg_stats`, `kin_stats`, `virtual_stats`), processor settings |
+| Tree | File | Shape | Content |
+|---|---|---|---|
+| interim | `emg.npy` | (T, C) | the filtered EMG of the real electrodes, volts, at `fs` |
+| interim | `kin.npy` | (T/r, 22) | the joints in radians, NaN = no label, at `label_fs` |
+| processed | `virtual.npy` | (T, 8) | **model input**: the EMG on the virtual band, normalized (1 ~ strong contraction) |
+| processed | `labels.npy` | (T/r, 22) | **targets**: the joints in 0 (~ open hand) - 1 (~ closed hand), NaN = no label |
+| both | `stimulus.npy` | (T/r,) | the instructed movement, 0 rest, -1 none |
+| both | `meta.json` | | dataset, electrodes, segments, the anchors (`emg_stats`, `kin_stats`; processed: `virtual_stats`), settings |
+
+`data/processed/calibration/` holds the calibration baseline (below). Augmenting in the training repo (turning or
+mirroring a band, moving it along the arm) starts from the interim EMG and the electrode positions in its meta, then
+goes through the virtual array again.
 
 Two rules for whoever reads it:
 
@@ -134,11 +150,11 @@ Channels with unknown positions are dropped. `rotation=` turns the band: a whole
 by one column.
 
 ```bash
-python scripts/tests/test_virtual_array.py   # output/virtual_array/{report,layouts}.png + PASS/FAIL table
+python scripts/tests/test_virtual_array.py   # docs/figures/virtual_array_{report,layouts}.png + PASS/FAIL table
 jupyter lab notebooks/virtual_array.ipynb    # pip install -e ".[notebook]"
 ```
 
-`layouts.png` draws every dataset's electrodes (cross-section and unrolled skin, with channel numbers, how well each
+`virtual_array_layouts.png` draws every dataset's electrodes (cross-section and unrolled skin, with channel numbers, how well each
 band's placement is known, and the virtual electrodes). The script checks the array (same output for every layout,
 channel order and unknown positions ignored, a common monopolar signal removed, a 45° turn rolls the output) and the
 quality of the virtual signals: how far a channel's activity reaches around and along the forearm (the kernel
@@ -153,10 +169,35 @@ step by step.
 
 ![adapter](docs/diagrams/adapter.svg)
 
-A planned design (not in the build yet): a new user wears the band anywhere. A short calibration recording sets the
-gains (`Normalizer` anchors), finds the band's rotation with the virtual array (`VirtualArray(rotation=θ)`: the θ
-whose virtual channels best match the same actions in the training data), and then fits a small 8×8 adapter `W`
-(from the identity) in front of the frozen model, for what the rotation leaves (skin, pickup width).
+A new user wears the band anywhere. A short calibration recording sets the gains (`Normalizer` anchors), finds the
+band's rotation and direction with the virtual array (`VirtualArray(rotation=θ, mirror=m)`: the placement whose
+virtual channels best match the same actions in the training data), and then (planned, training repo) fits a small 8×8
+adapter `W` (from the identity) in front of the frozen model, for what the rotation leaves (skin, pickup width).
+
+![calibration](docs/diagrams/calibration.svg)
+
+The training side of this is built with the data: the **calibration baseline** (`femg.calib_baseline.CalibBaseline`,
+settings in `src/femg/config/calib_baseline.yaml`):
+
+1. actions in every session: from the labels (joints held still within a range), rest, fist, pointing, two fingers
+   (index and middle straight) and index flexion; wrist flexion from NinaPro's cue (Exercise B, movement 13);
+2. each session's signature: per action, the mean log RMS of each virtual channel minus rest, minus the ring mean (where
+   around the forearm the action shows up, independent of gain);
+3. alignment: no dataset documents its band's rotation or direction, so every session is matched to the mean over the
+   16 placements (8 rotations × 2 directions) until it settles, and the frame is turned so wrist flexion peaks palmar.
+
+`data/processed/calibration/baseline.json` holds one template per action (and its spread), `sessions.parquet` where
+each session's band sat (rotation, direction, score, margin: also a check of the data). A new user: their signature,
+`CalibBaseline.match(signature, baseline.templates)`, and the band's matrix with that rotation and direction.
+
+```bash
+python scripts/tests/test_calib_baseline.py   # docs/figures/calib_baseline.png + PASS/FAIL table
+jupyter lab notebooks/calib_baseline.ipynb    # the baseline step by step, and a simulated new band
+```
+
+Provisional: with 1-2 subjects per dataset; rebuild after the full download. Wrist extension and deviation are left out
+until NinaPro's wrist cues and glove labels are checked (they disagree), so the direction is consistent across
+sessions but not fixed anatomically.
 
 ## Diagrams
 
@@ -170,7 +211,7 @@ pip install -e ".[explorer]"     # once; Node.js is needed too (the dashboard bu
 python -m tools.explorer         # http://127.0.0.1:8080 (--host 0.0.0.0 for other machines, --no-hand without MuJoCo)
 ```
 
-A dashboard over `data/processed`: pick a session, scroll the EMG (min/max per pixel + 100 ms RMS, µV or ÷ active,
+A dashboard over `data/interim`: pick a session, scroll the EMG (min/max per pixel + 100 ms RMS, µV or ÷ active,
 ring8 or all channels), the joints (rad or 0-1) and the instructed movements on one time axis, and play it while a
 robot hand (mjviser, port 8081) moves in sync. The hand menu lists every file in `src/femg/hand/models/` (Shadow, LEAP, Aero, MyoHand). Frames without a label show as gaps in the
 plots, and the hand keeps its last pose there.
@@ -183,14 +224,15 @@ Backend: `tools/explorer/` (FastAPI, memory-mapped sessions, one value per pixel
 
 ```bash
 pip install -e ".[viz]"
-python scripts/tests/compare_datasets.py                    # output/compare/{emg,hand}.png + PASS/FAIL table
-python scripts/tests/estimate_kin_lag.py data/processed/emg_fk/s01/free   # where the pose best follows the EMG
-python scripts/view_hand.py data/processed/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
+python scripts/tests/compare_datasets.py                    # docs/figures/dataset_{emg,hand,kin}.png + PASS/FAIL
+python scripts/tests/estimate_kin_lag.py data/interim/emg_fk/s01/free   # where the pose best follows the EMG
+python scripts/view_hand.py data/interim/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
 ```
 
 - `compare_datasets.py`: each dataset against the pool, percentile by percentile, within the same scenario (rest,
-  hold, moving: defined from the hand, `src/femg/normalize.py`). `emg.png`: ring8 RMS raw (µV) and normalized
-  (/ `active`). `hand.png`: hand flexion, speed and movement bout duration. The table gates a dataset at p10..p90.
+  hold, moving: defined from the hand, `src/femg/normalize.py`). `dataset_emg.png`: ring8 RMS raw (µV) and
+  normalized (/ `active`). `dataset_hand.png`: hand flexion, speed and movement bout duration. `dataset_kin.png`: every
+  joint's angles per dataset. The table gates a dataset at p10..p90.
 - `estimate_kin_lag.py`: fits a linear EMG envelope → pose decoder at every lag and prints the best one. Datasets on
   one clock land at 60-300 ms (GREAT, NinaPro DB2/DB7); much more or less means `kin_lag_s` is off.
 - `view_hand.py`: plays a session's `kin.npy` on a hand model (`--hand`, default Shadow Hand) in the browser
@@ -207,6 +249,7 @@ a pinned dataset version with:
 ```bash
 pip install "femg @ git+ssh://git@github.com/ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset.git"
 dvc import git@github.com:ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset data/processed -o data/forearm
+dvc import git@github.com:ETHRoboticsClub/BRI-ForearmEMGWorldModelDataset data/interim -o data/forearm_interim  # augmentation
 ```
 
 `dvc update data/forearm.dvc` moves it to a newer build. A session is read like this:
@@ -228,7 +271,10 @@ for start, end in meta["segments"]:  # cut windows inside one segment only
 # loss = ((pred - kin) ** 2 * mask).sum() / mask.sum()
 ```
 
-The real electrodes' EMG normalizes the same way: `Normalizer.emg(emg, meta["emg_stats"])`.
+For augmentation, the same session's real EMG is in the interim tree (`data/forearm_interim/<meta["key"]>/emg.npy`,
+volts): `Normalizer.emg(emg, meta["emg_stats"])`, then the band moved and the virtual array applied
+(`VirtualArray.matrix(positions, gains, rotation, mirror)`, positions from `meta["electrodes"]`, gains
+1 / `meta["virtual_stats"]["active"]`).
 
 ## Add a dataset
 
@@ -267,31 +313,35 @@ The real electrodes' EMG normalizes the same way: `Normalizer.emg(emg, meta["emg
 
 ```
 params.yaml                  build settings: datasets, percent, workers, processor
-dvc.yaml                     one build stage per dataset -> data/processed/<dataset>
+dvc.yaml                     per dataset: interim and processed stages; then calibration
 docs/
   data-spec.md               requirements, decisions, dataset status, roadmap
   diagrams/                  Typst sources + rendered SVGs (make -C docs/diagrams)
 scripts/
   pull_data.py               PHASE 1: download raw files
-  build_dataset.py           PHASE 2: load -> process -> save, in parallel over subjects
+  build_dataset.py           PHASE 2: raw -> interim -> processed -> calibration, in parallel
   view_hand.py               play a session on a hand model in the browser
   tests/
     compare_datasets.py      each dataset against the pool (EMG levels, hand flexion and speed)
-    estimate_kin_lag.py      EMG -> pose delay of processed sessions
+    estimate_kin_lag.py      EMG -> pose delay of interim sessions
     test_virtual_array.py    checks of the virtual array and of the quality of its signals
+    test_calib_baseline.py   checks of the calibration baseline (alignment, recovery, anchors)
 notebooks/
   virtual_array.ipynb        the virtual array step by step: matrix, signals, quality
+  calib_baseline.ipynb       the calibration baseline step by step, and a simulated new band
 src/femg/
   download.py                RemoteFile + download_file (md5, zip members)
   datasets/                  one reader per public dataset (base.py: Dataset, DatasetConfig, Session)
     config/                  one YAML per dataset: source, rates, units, electrodes, montages, notes
-  processor.py               Processor: raw session -> training data (every step, in order)
+  processor.py               Processor: raw -> interim (process), interim -> processed (prepare)
   signal_utils.py            EMG resampling, causal filter, envelope; kinematics rebuild (resample_kin)
-  save.py                    on-disk layout: save_session, meta.json, sessions.parquet
+  save.py                    on-disk layout: save_session, save_arrays, meta.json, sessions.parquet
   normalize.py               Normalizer (EMG / active, joints 0-1), display montage, rest/hold/moving scenarios
   electrodes.py              ElectrodeGroup, ElectrodeLayout: where every channel sits on the arm
   virtual_array.py           VirtualArray: raw EMG of any electrode layout -> 8 virtual channels
   config/virtual_array.yaml  the virtual electrodes and the kernel widths
+  calib_baseline.py          CalibBaseline: action signatures, alignment, matching a band; Baseline (saved templates)
+  config/calib_baseline.yaml the calibration actions
   hand/
     joints.py                the 22 canonical joints (the labels), label sources, units, glove sensor maps
     mapping.py               HandMap: which label drives each joint of a 3D hand model

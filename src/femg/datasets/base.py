@@ -22,9 +22,6 @@ class Session:
     # where each continuous recording starts (kin samples, label frames once processed): trials joined end to end
     # are not continuous in time, so nothing is filtered across a join and training windows must not span one
     segments: list[int] = field(default_factory=lambda: [0])
-    # set by the Processor: EMG on the virtual band, normalized (T, H * A); joints in 0-1 (Tk, N_JOINTS)
-    virtual: np.ndarray | None = None
-    labels: np.ndarray | None = None
 
 
 CONFIG_DIR = Path(__file__).with_name("config")

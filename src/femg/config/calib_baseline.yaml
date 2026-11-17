@@ -1,0 +1,17 @@
+# Calibration actions, held hand states found in the processed sessions. From the labels (joints 0 open .. 1 closed):
+# `joints`, each held still within [low, high] (null: no bound), a joint being a canonical joint, a finger (index,
+# middle, ring, pinky: the mean of its MCP and PIP flexion) or finger_flexion (the mean over the four). Or from `cues`:
+# a dataset's instructed movement ("<dataset>/<session>": stimulus id).
+# Wrist extension and deviation are left out: NinaPro's wrist cues and glove wrist labels disagree (cue 15 shows a
+# closed hand with the wrist extended, 17 a strong deviation), to be checked first
+actions:
+  rest: {joints: {finger_flexion: [null, 0.2]}}  # the baseline every other action is measured against
+  fist: {joints: {finger_flexion: [0.75, null]}}
+  pointing: {joints: {index: [null, 0.25], middle: [0.6, null], ring: [0.6, null]}}  # index straight, others closed
+  two_fingers: {joints: {index: [null, 0.3], middle: [null, 0.3], ring: [0.6, null], pinky: [0.6, null]}}
+  index_flexion: {joints: {index: [0.6, null], middle: [null, 0.3], ring: [null, 0.3]}}  # index closed, others open
+  wrist_flexion: {cues: {ninapro_db2/E1: 13, ninapro_db7/E1: 13}, anchor_deg: 0}  # Exercise B; wrist flexors: palmar
+still_per_s: 0.5  # held: every joint of the action moves slower than this (0-1 units per second)
+min_s: 1.0  # an action counts in a session with at least this much held time
+search_mirror: true  # also try the band running the other way round
+iterations: 10  # group alignment: match every session to the mean, recompute the mean

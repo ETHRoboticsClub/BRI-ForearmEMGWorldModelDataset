@@ -30,10 +30,8 @@ def build_frontend() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="python -m tools.explorer", description="Dashboard to explore data/processed."
-    )
-    parser.add_argument("--data", type=Path, default=Path("data/processed"))
+    parser = argparse.ArgumentParser(prog="python -m tools.explorer", description="Dashboard to explore data/interim.")
+    parser.add_argument("--data", type=Path, default=Path("data/interim"))
     parser.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to open it from other machines")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--hand-port", type=int, default=8081, help="viser server of the hand")

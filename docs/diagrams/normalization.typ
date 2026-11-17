@@ -16,62 +16,64 @@
 
 #cetz.canvas({
   import cetz.draw: *
-  let (x1, x2, x3, x4) = (0, 4.8, 9.6, 14.4)
-  let (emg-y, kin-y) = (0, -3.8)
+  let (fw, fh) = (16.6, 6.8)
+  frame(fw, fh)
+  let size = (2.9, 1.8)
+  let half = size.at(0) / 2
+  let (x1, x2, x3, x4) = (2.0, 5.95, 9.85, 13.8)
+  let (emg-y, kin-y) = (4.65, 1.6)
+  let op = (2.5, 0.75) // the operation applied with the anchors
 
-  title((-1.9, 2.45), [Normalization (`Normalizer`, at build time): two anchors per session, no labels needed])
-
-  panel((-1.9, -1.55), (16.3, 1.9), [EMG, per channel])
-  node((x1, emg-y), "data", [Filtered EMG], detail: [two devices, 5× apart (V)], traces: (
+  // a: EMG, per channel
+  row-label((0.3, fh - 0.3), [a], [EMG, per channel], color: muted)
+  card((x1, emg-y), [two devices], size: size, kind: "data", traces: (
     trace(raw-dry),
     trace(raw-bipolar, color: orange),
   ))
-  node((x2, emg-y), "stats", [emg_stats], detail: [100 ms RMS · p10, p95 (log)], log: true, traces: (
+  card((x2, emg-y), [RMS · anchors], size: size, kind: "stats", log: true, traces: (
     trace(env-dry),
     trace(env-bipolar, color: orange),
   ), levels: (
-    level(active-dry, color: blue, label: [p95]),
-    level(percentile(env-dry, 10), color: blue, label: [p10]),
-    level(active-bipolar, color: orange, label: [p95]),
-    level(percentile(env-bipolar, 10), color: orange, label: [p10]),
+    level(active-dry, color: blue, label: [$a_95$]),
+    level(percentile(env-dry, 10), color: blue, label: [$a_10$]),
+    level(active-bipolar, color: orange),
+    level(percentile(env-bipolar, 10), color: orange),
   ))
-  node((x3, emg-y), "step", [Normalizer.emg], detail: [EMG ÷ active], size: (3.4, 1.2))
-  node((x4, emg-y), "result", [→ to_virtual], detail: [same scale (envelope shown)], traces: (
+  card((x3, emg-y), [$x slash a_95$], size: op)
+  card((x4, emg-y), [same scale], size: size, kind: "result", traces: (
     trace(rescale(env-dry, 0, active-dry)),
     trace(rescale(env-bipolar, 0, active-bipolar), color: orange),
   ), levels: (level(1, label: [1]),))
+  for (a, b, wa, wb) in ((x1, x2, half, half), (x2, x3, half, op.at(0) / 2), (x3, x4, op.at(0) / 2, half)) {
+    arrow((a + wa, emg-y), (b - wb, emg-y))
+  }
 
-  arrow((x1 + 1.7, emg-y), (x2 - 1.7, emg-y), label: [measure])
-  arrow((x2 + 1.7, emg-y), (x3 - 1.7, emg-y), label: [meta.json])
-  arrow((x3 + 1.7, emg-y), (x4 - 1.7, emg-y), label: [apply])
-
-  panel((-1.9, kin-y - 1.55), (16.3, kin-y + 1.9), [Kinematics, per joint])
-  node((x1, kin-y), "data", [Joint angles], detail: [calibrated (rad) vs raw glove], traces: (
+  // b: joint angles, per joint
+  row-label((0.3, kin-y + 1.4), [b], [joint angles, per joint], color: muted)
+  card((x1, kin-y), [two gloves], size: size, kind: "data", traces: (
     trace(angle-calibrated),
     trace(angle-raw-glove, color: orange),
   ))
-  node((x2, kin-y), "stats", [kin_stats], detail: [p2 = open · p98 = closed], traces: (
+  card((x2, kin-y), [anchors], size: size, kind: "stats", traces: (
     trace(angle-calibrated),
     trace(angle-raw-glove, color: orange),
   ), levels: (
-    level(anchors(angle-raw-glove).at(1), color: orange, label: [p98]),
-    level(anchors(angle-raw-glove).at(0), color: orange, label: [p2]),
-    level(anchors(angle-calibrated).at(1), color: blue, label: [p98]),
-    level(anchors(angle-calibrated).at(0), color: blue, label: [p2]),
+    level(anchors(angle-raw-glove).at(1), color: orange, label: [$theta_98$]),
+    level(anchors(angle-raw-glove).at(0), color: orange, label: [$theta_2$]),
+    level(anchors(angle-calibrated).at(1), color: blue),
+    level(anchors(angle-calibrated).at(0), color: blue),
   ))
-  node((x3, kin-y), "step", [Normalizer.kin], detail: [(θ − low) ÷ (high − low)], size: (3.4, 1.2))
-  node((x4, kin-y), "result", [labels.npy], detail: [targets: 0 open … 1 closed], traces: (
+  card((x3, kin-y), [$(theta - theta_2) slash (theta_98 - theta_2)$], size: op)
+  card((x4, kin-y), [0 open · 1 closed], size: size, kind: "result", traces: (
     trace(rescale(angle-calibrated, ..anchors(angle-calibrated))),
     trace(rescale(angle-raw-glove, ..anchors(angle-raw-glove)), color: orange),
   ))
+  for (a, b, wa, wb) in ((x1, x2, half, half), (x2, x3, half, op.at(0) / 2), (x3, x4, op.at(0) / 2, half)) {
+    arrow((a + wa, kin-y), (b - wb, kin-y))
+  }
 
-  arrow((x1 + 1.7, kin-y), (x2 - 1.7, kin-y), label: [measure])
-  arrow((x2 + 1.7, kin-y), (x3 - 1.7, kin-y), label: [meta.json])
-  arrow((x3 + 1.7, kin-y), (x4 - 1.7, kin-y), label: [apply])
-
-  content((x1 - 1.7, kin-y - 2.0), anchor: "west", text(size: 6.5pt, fill: muted)[
-    #box(std.line(length: 10pt, stroke: 1.2pt + blue)) dry monopolar armband (EMG-FK) #h(10pt)
-    #box(std.line(length: 10pt, stroke: 1.2pt + orange)) bipolar electrodes, raw glove (NinaPro) #h(10pt)
-    #box(std.line(length: 10pt, stroke: (dash: "dashed"))) anchor percentile
+  content((fw / 2, 0.3), anchor: "south", text(size: 6.5pt, fill: muted)[
+    #box(std.line(length: 10pt, stroke: 1.2pt + blue)) dry monopolar band · calibrated angles #h(14pt)
+    #box(std.line(length: 10pt, stroke: 1.2pt + orange)) bipolar electrodes · raw glove
   ])
 })

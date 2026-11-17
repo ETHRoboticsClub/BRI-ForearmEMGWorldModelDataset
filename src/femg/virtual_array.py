@@ -25,7 +25,9 @@ class VirtualArray:
     Input: EMG divided by each real channel's active level (meta emg_stats.active), and `inputs(layout)`: the
     positions of the electrode groups whose layout is in `layouts` (rings), NaN for the others (spots of uncertain
     position, unknown ones), which get no weight. A virtual electrode with no real one within reach_cm is not covered:
-    its row is 0. rotation (deg) turns the real band: k * 360 / n_angles rolls the output by k columns."""
+    its row is 0. rotation (deg) turns the real band: k * 360 / n_angles rolls the output by k columns. mirror
+    reflects it first (angle -> -angle: a band whose channels run the other way round), so virtual column i becomes
+    column -i; both together: `CalibBaseline.transform`."""
 
     n_angles: int
     heights: tuple[float, ...]
@@ -56,26 +58,35 @@ class VirtualArray:
         angle, z = np.meshgrid(self.angles, self.heights)
         return np.stack([angle, z], axis=-1)
 
-    def kernel(self, at: np.ndarray, positions: np.ndarray, rotation: float = 0.0) -> np.ndarray:
+    @staticmethod
+    def place(positions: np.ndarray, rotation: float = 0.0, mirror: bool = False) -> np.ndarray:
+        """(C, 2): the real (angle, z), the band reflected (mirror) and then turned by rotation (deg)."""
+        real = np.asarray(positions, np.float64)[:, :2].copy()
+        if mirror:
+            real[:, 0] = -real[:, 0]
+        real[:, 0] += rotation
+        return real
+
+    def kernel(self, at: np.ndarray, positions: np.ndarray, rotation: float = 0.0, mirror: bool = False) -> np.ndarray:
         """(..., C): weight of each real channel (positions (C, 2+): angle, z) at the points `at` (..., 2)."""
-        real = np.asarray(positions, np.float64)[:, :2] + [rotation, 0.0]
+        real = self.place(positions, rotation, mirror)
         at = np.asarray(at, np.float64)[..., None, :]
         around = ((real[:, 0] - at[..., 0] + 180) % 360 - 180) / 360 * FOREARM_CIRCUMFERENCE_CM
         along = (real[:, 1] - at[..., 1]) * FOREARM_LENGTH_CM
         squared = (around / self.width_around_cm) ** 2 + (along / self.width_along_cm) ** 2
         return np.nan_to_num(np.exp(-0.5 * squared))
 
-    def weights(self, positions: np.ndarray, rotation: float = 0.0) -> np.ndarray:
+    def weights(self, positions: np.ndarray, rotation: float = 0.0, mirror: bool = False) -> np.ndarray:
         """(H, A, C): the kernel at every virtual electrode, before normalising."""
-        return self.kernel(self.positions(), positions, rotation)
+        return self.kernel(self.positions(), positions, rotation, mirror)
 
     def inputs(self, layout: ElectrodeLayout) -> np.ndarray:
         """(C, 3): the positions the virtual electrodes are built from (NaN: groups of other layouts, unknown)."""
         return layout.positions(self.layouts)
 
-    def covered(self, positions: np.ndarray, rotation: float = 0.0) -> np.ndarray:
+    def covered(self, positions: np.ndarray, rotation: float = 0.0, mirror: bool = False) -> np.ndarray:
         """(H, A) True where a real electrode is within reach_cm over the skin."""
-        real = np.asarray(positions, np.float64)[:, :2] + [rotation, 0.0]
+        real = self.place(positions, rotation, mirror)
         distance = distance_cm(self.positions()[..., None, :], real)
         return np.where(np.isfinite(distance), distance, np.inf).min(axis=-1) <= self.reach_cm
 
@@ -88,17 +99,19 @@ class VirtualArray:
             out[np.ix_(monopolar, monopolar)] -= 1 / monopolar.sum()
         return out
 
-    def matrix(self, positions: np.ndarray, gains: np.ndarray | None = None, rotation: float = 0.0) -> np.ndarray:
+    def matrix(
+        self, positions: np.ndarray, gains: np.ndarray | None = None, rotation: float = 0.0, mirror: bool = False
+    ) -> np.ndarray:
         """(H * A, C): virtual EMG = matrix @ real EMG, one sample (channels / active level) at a time."""
-        w = self.weights(positions, rotation).reshape(-1, len(positions))
+        w = self.weights(positions, rotation, mirror).reshape(-1, len(positions))
         total = w.sum(axis=1, keepdims=True)
-        covered = self.covered(positions, rotation).reshape(-1, 1)
+        covered = self.covered(positions, rotation, mirror).reshape(-1, 1)
         w = np.where(covered & (total > 0), w / np.maximum(total, 1e-300), 0.0)
         if gains is not None:
             w = w * np.asarray(gains, np.float64).reshape(-1, 1)
         return w @ self.reference(positions)
 
-    def __call__(self, emg, positions, gains=None, rotation: float = 0.0) -> np.ndarray:
+    def __call__(self, emg, positions, gains=None, rotation: float = 0.0, mirror: bool = False) -> np.ndarray:
         """(T, C) EMG / active level -> (T, H, A) virtual EMG."""
-        out = np.asarray(emg, np.float32) @ self.matrix(positions, gains, rotation).T.astype(np.float32)
+        out = np.asarray(emg, np.float32) @ self.matrix(positions, gains, rotation, mirror).T.astype(np.float32)
         return out.reshape(len(out), *self.shape)

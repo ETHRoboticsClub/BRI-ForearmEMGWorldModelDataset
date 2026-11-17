@@ -81,26 +81,6 @@
   rect((x0, y0), (x1, y1), stroke: 0.4pt + muted)
 }
 
-#let node(center, kind, title, detail: none, size: (3.4, 2.4), traces: (), levels: (), log: false) = {
-  import cetz.draw: *
-  let (x, y) = center
-  let (w, h) = size
-  let style = kinds.at(kind)
-  rect((x - w / 2, y - h / 2), (x + w / 2, y + h / 2), radius: 0.12, fill: style.fill, stroke: 0.8pt + style.stroke)
-  content((x, y + h / 2 - 0.3), text(weight: "bold", title))
-  if detail != none { content((x, y + h / 2 - 0.68), text(size: 6.5pt, fill: muted, detail)) }
-  if traces.len() > 0 {
-    let area = ((x - w / 2 + 0.25, y - h / 2 + 0.2), (x + w / 2 - 0.45, y + h / 2 - 1.0))
-    sparkline(area, traces, levels: levels, log: log)
-  }
-}
-
-#let panel(from, to, label) = {
-  import cetz.draw: *
-  rect(from, to, radius: 0.2, fill: rgb("#f6f6f4"), stroke: (paint: rgb("#a8a7a2"), thickness: 0.6pt, dash: "dashed"))
-  content((from.at(0) + 0.2, to.at(1) - 0.25), anchor: "west", text(weight: "bold", fill: muted, label))
-}
-
 #let arrow(..points, label: none) = {
   import cetz.draw: *
   let pts = points.pos()
@@ -115,8 +95,27 @@
   }
 }
 
-#let title(position, body) = cetz.draw.content(position, anchor: "west", text(size: 11pt, weight: "bold", body))
 
 // Paper-style figures: panel letters and math labels
 #let math-label(position, body, anchor: "north") = cetz.draw.content(position, anchor: anchor, padding: 0.1, body)
 #let letter(position, body) = cetz.draw.content(position, anchor: "north-west", text(size: 10pt, weight: "bold", body))
+
+// Journal figures: a white frame, and small cards (a short title over a signal sketch)
+#let frame(width, height) = cetz.draw.rect((0, 0), (width, height), radius: 0.15, stroke: 0.5pt + rgb("#d8d7d2"), fill: white)
+
+#let card(center, title, size: (2.3, 1.6), kind: "step", traces: (), levels: (), log: false) = {
+  import cetz.draw: *
+  let (x, y) = center
+  let (w, h) = size
+  let style = kinds.at(kind)
+  rect((x - w / 2, y - h / 2), (x + w / 2, y + h / 2), radius: 0.08, fill: style.fill, stroke: 0.6pt + style.stroke)
+  content((x, if traces.len() > 0 { y + h / 2 - 0.22 } else { y }), text(size: 7pt, title)) // no sketch: centred
+  if traces.len() > 0 {
+    sparkline(((x - w / 2 + 0.18, y - h / 2 + 0.15), (x + w / 2 - 0.3, y + h / 2 - 0.45)), traces, levels: levels, log: log)
+  }
+}
+
+#let row-label(position, letter-body, body, color: muted) = {
+  import cetz.draw: *
+  content(position, anchor: "west", text(size: 10pt, weight: "bold", letter-body) + h(6pt) + text(size: 7pt, fill: color, body))
+}

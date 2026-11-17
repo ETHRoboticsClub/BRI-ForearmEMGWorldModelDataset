@@ -61,21 +61,26 @@ def make_meta(dataset, session, processor) -> dict:
         "measured_joints": measured,
         # [start, end) label frames of each continuous recording; a frame whose kin row is all NaN has no label
         "segments": [[a, b] for a, b in zip(session.segments, [*session.segments[1:], len(session.kin)], strict=True)],
-        "n_virtual": session.virtual.shape[1],
         "processor": processor.settings(),
     }
     return meta
 
 
 def save_session(folder: Path, session, meta: dict) -> None:
-    tmp = folder.with_name(folder.name + ".tmp")  # renamed at the end: a crash never leaves half a session
+    """An interim session: emg (T, C) volts, kin (T / r, J) rad, stimulus (T / r,), meta.json."""
+    arrays = {"emg": session.emg, "kin": session.kin, "stimulus": session.stimulus.astype(np.int16)}
+    save_arrays(folder, arrays, meta)
+
+
+def save_arrays(folder: Path, arrays: dict[str, np.ndarray], meta: dict) -> None:
+    """<name>.npy per array (float32 unless integer) and meta.json, written to a temporary folder renamed at the end:
+    a crash never leaves half a session."""
+    tmp = folder.with_name(folder.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
-    np.save(tmp / "emg.npy", session.emg.astype(np.float32))
-    np.save(tmp / "kin.npy", session.kin.astype(np.float32))
-    np.save(tmp / "stimulus.npy", session.stimulus.astype(np.int16))
-    np.save(tmp / "virtual.npy", session.virtual.astype(np.float32))
-    np.save(tmp / "labels.npy", session.labels.astype(np.float32))
+    for name, array in arrays.items():
+        array = np.asarray(array)
+        np.save(tmp / f"{name}.npy", array if np.issubdtype(array.dtype, np.integer) else array.astype(np.float32))
     (tmp / "meta.json").write_text(json.dumps(meta, indent=1))
     shutil.rmtree(folder, ignore_errors=True)
     tmp.rename(folder)

@@ -11,8 +11,8 @@ from femg.normalize import Normalizer, as_array
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Replay a processed session on a hand at http://localhost:PORT.")
-    parser.add_argument("session", type=Path, help="e.g. data/processed/ninapro_db8/s01/A1")
+    parser = argparse.ArgumentParser(description="Replay an interim session on a hand at http://localhost:PORT.")
+    parser.add_argument("session", type=Path, help="an interim session, e.g. data/interim/ninapro_db8/s01/A1")
     parser.add_argument("--hand", default="shadow_hand", choices=list(available_hands()))
     parser.add_argument("--start", type=float, default=0.0, help="start time (s)")
     parser.add_argument("--port", type=int, default=8080)
