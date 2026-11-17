@@ -84,3 +84,469 @@ stages:
       md5: 4a03437d977f98e6e79599744ad88a97.dir
       size: 1254469837
       nfiles: 145
+  interim@emg_fk:
+    cmd: python scripts/build_dataset.py --dataset emg_fk --stage interim
+      --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/interim/emg_fk
+      hash: md5
+      md5: 81fc6ea825c33dda15fe81f192a3bd16.dir
+      size: 559655185
+      nfiles: 81
+  interim@ninapro_db2:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db2 --stage interim
+      --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/interim/ninapro_db2
+      hash: md5
+      md5: 097e5f1581b658ee7acd8397b2826470.dir
+      size: 1606922094
+      nfiles: 321
+  interim@ninapro_db8:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db8 --stage interim
+      --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/interim/ninapro_db8
+      hash: md5
+      md5: 119be2e17d6c0acc2bd7973b9a832755.dir
+      size: 667254512
+      nfiles: 145
+  interim@ninapro_db7:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db7 --stage interim
+      --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/interim/ninapro_db7
+      hash: md5
+      md5: 3ad8d30b4b38d2b840423504bfe9d133.dir
+      size: 896519030
+      nfiles: 177
+  interim@great:
+    cmd: python scripts/build_dataset.py --dataset great --stage interim
+      --overwrite
+    deps:
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/interim/great
+      hash: md5
+      md5: a3065847bf0ae32f7bc8768480342b52.dir
+      size: 523409624
+      nfiles: 129
+  processed@emg_fk:
+    cmd: python scripts/build_dataset.py --dataset emg_fk --stage processed
+      --overwrite
+    deps:
+    - path: data/interim/emg_fk
+      hash: md5
+      md5: 81fc6ea825c33dda15fe81f192a3bd16.dir
+      size: 559655185
+      nfiles: 81
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/processed/emg_fk
+      hash: md5
+      md5: a6242c3f8066bf44e38f8b2071959136.dir
+      size: 559686664
+      nfiles: 81
+  processed@ninapro_db2:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db2 --stage processed
+      --overwrite
+    deps:
+    - path: data/interim/ninapro_db2
+      hash: md5
+      md5: 097e5f1581b658ee7acd8397b2826470.dir
+      size: 1606922094
+      nfiles: 321
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/processed/ninapro_db2
+      hash: md5
+      md5: 254c12b80d1f9d90b98314bc34b79a35.dir
+      size: 1330717982
+      nfiles: 321
+  processed@ninapro_db8:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db8 --stage processed
+      --overwrite
+    deps:
+    - path: data/interim/ninapro_db8
+      hash: md5
+      md5: 119be2e17d6c0acc2bd7973b9a832755.dir
+      size: 667254512
+      nfiles: 145
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/processed/ninapro_db8
+      hash: md5
+      md5: 2868d97458fb372fcdb7a90e398d8c50.dir
+      size: 471525240
+      nfiles: 145
+  processed@ninapro_db7:
+    cmd: python scripts/build_dataset.py --dataset ninapro_db7 --stage processed
+      --overwrite
+    deps:
+    - path: data/interim/ninapro_db7
+      hash: md5
+      md5: 3ad8d30b4b38d2b840423504bfe9d133.dir
+      size: 896519030
+      nfiles: 177
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/processed/ninapro_db7
+      hash: md5
+      md5: 9c4e578ea0084ed3f3b03d125fb34bef.dir
+      size: 742419748
+      nfiles: 177
+  processed@great:
+    cmd: python scripts/build_dataset.py --dataset great --stage processed
+      --overwrite
+    deps:
+    - path: data/interim/great
+      hash: md5
+      md5: a3065847bf0ae32f7bc8768480342b52.dir
+      size: 523409624
+      nfiles: 129
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        percent: 100
+        processor:
+          fs: 200
+          label_fs: 100
+          highpass: 3
+          notch: true
+          calib_s: 30
+          rms_window_s: 0.1
+          emg_anchors:
+          - 10
+          - 95
+          kin_anchors:
+          - 2
+          - 98
+          kin_lowpass: 6
+          kin_max_repeat_s: 0.1
+          kin_max_gap_s: 0.1
+          settle_s: 0.2
+    outs:
+    - path: data/processed/great
+      hash: md5
+      md5: 0e5e2def36407d0fdbfe7a149715b412.dir
+      size: 369943307
+      nfiles: 129
+  calibration:
+    cmd: python scripts/build_dataset.py --stage calibration
+    deps:
+    - path: data/processed/emg_fk
+      hash: md5
+      md5: a6242c3f8066bf44e38f8b2071959136.dir
+      size: 559686664
+      nfiles: 81
+    - path: data/processed/great
+      hash: md5
+      md5: 0e5e2def36407d0fdbfe7a149715b412.dir
+      size: 369943307
+      nfiles: 129
+    - path: data/processed/ninapro_db2
+      hash: md5
+      md5: 254c12b80d1f9d90b98314bc34b79a35.dir
+      size: 1330717982
+      nfiles: 321
+    - path: data/processed/ninapro_db7
+      hash: md5
+      md5: 9c4e578ea0084ed3f3b03d125fb34bef.dir
+      size: 742419748
+      nfiles: 177
+    - path: data/processed/ninapro_db8
+      hash: md5
+      md5: 2868d97458fb372fcdb7a90e398d8c50.dir
+      size: 471525240
+      nfiles: 145
+    - path: scripts/build_dataset.py
+      hash: md5
+      md5: 5cf8ee2e61dfa8a234f99224e8a15bdf
+      size: 7463
+    - path: src/femg
+      hash: md5
+      md5: 075322354a10cf7e8d2f6133e5ffdcae.dir
+      size: 115434
+      nfiles: 32
+    params:
+      params.yaml:
+        datasets:
+        - emg_fk
+        - ninapro_db2
+        - ninapro_db8
+        - ninapro_db7
+        - great
+    outs:
+    - path: data/processed/calibration
+      hash: md5
+      md5: 8bcdacdbdc60d6a83ab2f2b43a2c32f9.dir
+      size: 13944
+      nfiles: 2
