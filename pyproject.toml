@@ -33,9 +33,13 @@ femg = ["config/*.yaml", "hand/models/*.json", "datasets/config/*.yaml"]
 [tool.ruff]
 src = ["src", "scripts", "tools"]
 line-length = 120
+extend-exclude = ["tools/myogen"]  # its own repo, linted there
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["myogen"]  # tools/myogen is a submodule, installed as a package
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

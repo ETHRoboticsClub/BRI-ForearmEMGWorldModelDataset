@@ -227,7 +227,7 @@ pip install -e ".[viz]"
 python scripts/tests/compare_datasets.py                    # docs/figures/dataset_{emg,hand,kin}.png + PASS/FAIL
 python scripts/tests/estimate_kin_lag.py data/interim/emg_fk/s01/free   # where the pose best follows the EMG
 python scripts/view_hand.py data/interim/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
-pip install -e tools/myogen && python scripts/tests/compare_synthetic.py   # docs/figures/synthetic_rms.png
+pip install -e tools/myogen && python scripts/tests/compare_synthetic.py   # docs/figures/synthetic_{rms,channels}.png
 ```
 
 - `compare_datasets.py`: each dataset against the pool, percentile by percentile, within the same scenario (rest,
