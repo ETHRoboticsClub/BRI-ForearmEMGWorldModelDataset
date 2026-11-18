@@ -227,6 +227,7 @@ pip install -e ".[viz]"
 python scripts/tests/compare_datasets.py                    # docs/figures/dataset_{emg,hand,kin}.png + PASS/FAIL
 python scripts/tests/estimate_kin_lag.py data/interim/emg_fk/s01/free   # where the pose best follows the EMG
 python scripts/view_hand.py data/interim/ninapro_db8/s01/A1 --start 60   # open http://localhost:8080
+pip install -e tools/myogen && python scripts/tests/compare_synthetic.py   # docs/figures/synthetic_rms.png
 ```
 
 - `compare_datasets.py`: each dataset against the pool, percentile by percentile, within the same scenario (rest,
@@ -235,6 +236,10 @@ python scripts/view_hand.py data/interim/ninapro_db8/s01/A1 --start 60   # open 
   joint's angles per dataset. The table gates a dataset at p10..p90.
 - `estimate_kin_lag.py`: fits a linear EMG envelope → pose decoder at every lag and prints the best one. Datasets on
   one clock land at 60-300 ms (GREAT, NinaPro DB2/DB7); much more or less means `kin_lag_s` is off.
+- `compare_synthetic.py`: replays the free-movement sessions' joints through myogen (`tools/myogen`) at each
+  dataset's own ring electrodes (`src/femg/config/synthetic.yaml`), and compares the RMS of the simulated EMG to
+  the recorded one: over time (r global, r per channel), as per-movement patterns around the ring (against the same
+  score between real subjects), and in device statistics (autocorrelation, neighbour r, rest / move).
 - `view_hand.py`: plays a session's `kin.npy` on a hand model (`--hand`, default Shadow Hand) in the browser
   (mjviser), with the canonical name and angle on every joint, and play/pause/step/speed controls.
 
@@ -326,6 +331,7 @@ scripts/
     estimate_kin_lag.py      EMG -> pose delay of interim sessions
     test_virtual_array.py    checks of the virtual array and of the quality of its signals
     test_calib_baseline.py   checks of the calibration baseline (alignment, recovery, anchors)
+    compare_synthetic.py     myogen EMG from the recorded joints against the recorded EMG
 notebooks/
   virtual_array.ipynb        the virtual array step by step: matrix, signals, quality
   calib_baseline.ipynb       the calibration baseline step by step, and a simulated new band

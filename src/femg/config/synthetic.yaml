@@ -1,0 +1,19 @@
+free_movement:  # sessions with no object or load in the hand
+  emg_fk: [free]
+  ninapro_db2: [E1]  # exercise B; E2 (C) grasps objects
+  ninapro_db7: [E1]
+  ninapro_db8: [A1, A2, A3]
+  # great: grasps of objects
+conditions: [intact]  # amputees: the kinematics are not of the EMG hand
+hand: myo_hand  # femg/hand/models: canonical joints (0-1) -> the model's joints, myogen and MyoHand share them
+subject: {grip_load: 0.0}  # myogen Subject overrides: no squeezing, free movement only
+params: {}  # myogen SimParams overrides, per stage: {emg: {decay_mm: 8.0}}
+random_subject: false  # true: Subject.random(seed) per session, else the average subject
+ied_mm: 10.0  # bipolar pole spacing: Delsys Trigno
+monopolar_reference: average  # monopolar bands (EMG-FK) against their common average, as the virtual array does
+rest_anchor: true  # the rest cue's posture is the model's relaxed hand (raw gloves have no zero)
+reps_per_cue: 2  # repetitions simulated per cue, each its own motion
+pad_s: 1.5  # rest kept before and after each repetition
+chunk_s: 30.0  # sessions without cues: windows of this length
+chunks: 6  # ... this many, evenly over the session
+skip_s: 1.0  # start of each motion left out of the metrics (high-pass transient)

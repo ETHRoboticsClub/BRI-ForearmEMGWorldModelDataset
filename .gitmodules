@@ -1,0 +1,3 @@
+[submodule "tools/myogen"]
+	path = tools/myogen
+	url = https://github.com/ETHRoboticsClub/myogen.git
