@@ -1,4 +1,5 @@
 import math
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import yaml
 
 from femg.download import RemoteFile, is_downloaded
 from femg.electrodes import ElectrodeLayout
+from femg.gestures import check_cues
 
 
 @dataclass
@@ -44,6 +46,9 @@ class DatasetConfig:
     hand: str = "right"
     emg_unit_scale: float = 1.0  # file units -> volts
     kin_lag_s: float = 0.0  # kin[t] shows the hand at t + kin_lag_s
+    kin_source: str = "native"  # where the labels come from: the dataset's own files, or another (ninapro_db2: db9)
+    # native cue id -> (its name in the dataset, shared gesture of src/femg/config/gestures.yaml or None); 0 is rest
+    cues: dict[int, tuple[str, str | None]] = field(default_factory=dict)
     notes: dict[str, str] = field(default_factory=dict)  # what was checked against the real files, and how
 
     @classmethod
@@ -51,7 +56,8 @@ class DatasetConfig:
         spec = yaml.safe_load((CONFIG_DIR / f"{name}.yaml").read_text())
         electrodes = ElectrodeLayout.from_config(spec.pop("electrodes"), spec.pop("montages", None))
         numbers = {k: float(spec[k]) for k in ("native_fs", "effective_fs", "emg_unit_scale", "kin_lag_s") if k in spec}
-        return cls(name=name, electrodes=electrodes, **(spec | numbers))
+        cues = load_cues(spec.pop("cues", None) or {}, name)
+        return cls(name=name, electrodes=electrodes, cues=cues, **(spec | numbers))
 
     def metadata(self) -> dict:
         """The meta.json fields of every session of the dataset."""
@@ -67,8 +73,23 @@ class DatasetConfig:
             "hand": self.hand,
             **self.electrodes.to_meta(),
             "kin_lag_s": self.kin_lag_s,
+            "kin_source": self.kin_source,
+            "stimulus_names": {cue: label for cue, (label, _) in self.cues.items()},
             "notes": self.notes,
         }
+
+
+def load_cues(spec: dict | str, dataset: str) -> dict[int, tuple[str, str | None]]:
+    """A dataset's `cues:`, inline ({id: [name, gesture]}) or the name of a table in config/cues/ shared by datasets
+    with the same protocol."""
+    if isinstance(spec, str):
+        spec = yaml.safe_load((CONFIG_DIR / "cues" / f"{spec}.yaml").read_text())
+    cues = {}
+    for cue, value in spec.items():
+        label, gesture = value
+        cues[int(cue)] = (str(label), gesture)
+    check_cues(cues, dataset)
+    return cues
 
 
 class Dataset:
@@ -93,6 +114,24 @@ class Dataset:
 
     def is_downloaded(self, subject: str, raw_dir: Path) -> bool:
         return all(is_downloaded(f, raw_dir) for f in self.files_to_download(subject))
+
+    def condition(self, subject: str) -> str:
+        """intact, amputee_transradial, ... without reading the files (the stratum of `splits`)."""
+        return "intact"
+
+    def splits(self, test_percent: float, seed: int) -> dict[str, str]:
+        """Subject -> train / test, stratified by condition: test_percent of each condition's subjects (rounded up, at
+        least one when the condition has two or more, none when it has one), drawn with a seed of its own per dataset.
+        Drawn from every subject, so a subject keeps its split whatever `percent` is built. A dataset with an official
+        split overrides this."""
+        subjects = self.subjects()
+        rng = np.random.default_rng([seed, zlib.crc32(self.name.encode())])
+        test = set()
+        for condition in sorted({self.condition(s) for s in subjects}):
+            group = [s for s in subjects if self.condition(s) == condition]
+            n_test = math.ceil(len(group) * test_percent / 100) if len(group) > 1 and test_percent > 0 else 0
+            test |= {group[i] for i in rng.permutation(len(group))[:n_test]}
+        return {s: "test" if s in test else "train" for s in subjects}
 
 
 def concat_trials(trials, emg_per_label: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[int]]:

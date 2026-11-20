@@ -1,0 +1,98 @@
+# The shared gesture vocabulary of discrete decoding: gesture.npy holds the position of a frame's gesture in this list
+# (0 = rest), -1 where the frame has no cue or its cue maps to no shared gesture. APPEND ONLY: an id is a position, so
+# inserting, removing or reordering an entry renames every gesture after it in data already built.
+# A dataset maps its own cue ids here in its config (`cues:` in src/femg/datasets/config/<name>.yaml). Two cues share a
+# gesture only when they ask for the same movement of the same hand; a near match gets its own entry.
+# name: [family, description]. The family is a coarse class (gesture_families in meta.json): training on families
+# merges near matches (GREAT power, DB8 cylindrical and NinaPro's sized wraps) without rebuilding anything.
+families:
+  rest: no instructed movement
+  single_digit: one digit (or a pair) flexed, extended or pressed, the others relaxed
+  hand_posture: a posture of several fingers held without an object
+  forearm_rotation: pronation, supination
+  wrist: wrist flexion, extension, deviation
+  # grasps, after the opposition types of the GRASP taxonomy (Feix et al. 2016, IEEE Trans Human-Machine Syst 46:66);
+  # power grasps split by object shape. stick, lateral and extension type are placed from memory of the taxonomy:
+  # check against the paper before relying on these families
+  power_wrap: palm and fingers wrapped around a cylinder
+  power_sphere: palm and fingers around a sphere or disk
+  intermediate: thumb against the side of the fingers (lateral) and similar
+  precision: fingertips against the thumb, no palm contact
+  functional: an activity with a tool or object (NinaPro C 38-40)
+gestures:
+  rest: [rest, "hand relaxed, no instructed movement"]
+  # single digits (NinaPro exercise A, DB2 exercise D force patterns, NinaPro DB8): a press against a force sensor
+  # (exercise D) and a free movement of the same digit share a gesture (same muscles, not the same kinematics)
+  thumb_flex: [single_digit, "thumb flexion"]
+  thumb_ext: [single_digit, "thumb extension"]
+  thumb_abd: [single_digit, "thumb abduction (away from the palm)"]
+  thumb_add: [single_digit, "thumb adduction (towards the palm)"]
+  index_flex: [single_digit, "index finger flexion, the others relaxed"]
+  index_ext: [single_digit, "index finger extension"]
+  middle_flex: [single_digit, "middle finger flexion, the others relaxed"]
+  middle_ext: [single_digit, "middle finger extension"]
+  ring_flex: [single_digit, "ring finger flexion, the others relaxed"]
+  ring_ext: [single_digit, "ring finger extension"]
+  little_flex: [single_digit, "little finger flexion, the others relaxed"]
+  little_ext: [single_digit, "little finger extension"]
+  index_little_flex: [single_digit, "index and little fingers flexed together"]
+  middle_ring_flex: [single_digit, "middle and ring fingers flexed together"]
+  thumb_index_flex: [single_digit, "thumb and index flexed together (pressing against each other)"]
+  # hand postures (NinaPro exercise B 1-8, 17)
+  thumb_up: [hand_posture, "thumb up, the other fingers closed"]
+  index_middle_ext: [hand_posture, "index and middle extended, the others flexed (victory / two fingers)"]
+  ring_little_flex: [hand_posture, "ring and little flexed, the others extended"]
+  thumb_opposition: [hand_posture, "thumb tip to the base of the little finger"]
+  fingers_abduct: [hand_posture, "all fingers extended and spread apart"]
+  fist: [hand_posture, "all fingers flexed in a fist"]
+  point_index: [hand_posture, "index extended, the other fingers flexed (pointing)"]
+  fingers_adduct: [hand_posture, "extended fingers held together"]
+  wrist_ext_fist: [wrist, "wrist extended with the hand closed"]
+  hand_open: [hand_posture, "hand opened wide from rest (fingers extended)"]
+  # wrist (NinaPro exercise B 9-16)
+  supination: [forearm_rotation, "forearm supination, rotation axis through the middle finger"]
+  pronation: [forearm_rotation, "forearm pronation, rotation axis through the middle finger"]
+  supination_little: [forearm_rotation, "forearm supination, axis through the little finger"]
+  pronation_little: [forearm_rotation, "forearm pronation, axis through the little finger"]
+  wrist_flex: [wrist, "wrist flexion (palmar)"]
+  wrist_ext: [wrist, "wrist extension (dorsal)"]
+  radial_dev: [wrist, "wrist radial deviation"]
+  ulnar_dev: [wrist, "wrist ulnar deviation"]
+  # grasps (NinaPro exercise C, Feix et al. taxonomy names)
+  large_diameter: [power_wrap, "large diameter grasp"]
+  small_diameter: [power_wrap, "small diameter grasp (power grip)"]
+  fixed_hook: [power_wrap, "fixed hook grasp"]
+  index_ext_grasp: [power_wrap, "index finger extension grasp"]
+  medium_wrap: [power_wrap, "medium wrap"]
+  ring_grasp: [power_wrap, "ring grasp"]
+  prismatic_4: [precision, "prismatic four fingers grasp"]
+  stick_grasp: [intermediate, "stick grasp"]
+  writing_tripod: [precision, "writing tripod grasp"]
+  power_sphere: [power_sphere, "power sphere grasp"]
+  sphere_3: [power_sphere, "three finger sphere grasp"]
+  precision_sphere: [precision, "precision sphere grasp"]
+  tripod: [precision, "tripod grasp"]
+  prismatic_pinch: [precision, "prismatic pinch grasp"]
+  tip_pinch: [precision, "tip pinch grasp (thumb and index tips)"]
+  quadpod: [precision, "quadpod grasp"]
+  lateral: [intermediate, "lateral grasp (thumb against the side of the index)"]
+  parallel_ext: [precision, "parallel extension grasp"]
+  extension_type: [intermediate, "extension type grasp"]
+  power_disk: [power_sphere, "power disk grasp"]
+  open_bottle: [functional, "open a bottle with a tripod grasp"]
+  turn_screw: [functional, "turn a screw (stick grasp of a screwdriver)"]
+  cut: [functional, "cut something (index finger extension grasp of a knife)"]
+  # other datasets
+  cylindrical: [power_wrap, "cylindrical grip of an object (NinaPro DB8; the closest of exercise C: medium wrap, not equal)"]
+  power: [power_wrap, "power grasp of GREAT (the object and its size are not documented)"]
+  # FORS-EMG: finger postures without a NinaPro counterpart
+  thumb_index_ext: [hand_posture, "thumb and index extended at a right angle, the others flexed (L shape)"]
+  index_little_ext: [hand_posture, "index and little extended, the others flexed (horns)"]
+  thumb_little_ext: [hand_posture, "thumb and little extended, the others flexed"]
+  # GRABMyo: held finger postures without a NinaPro counterpart
+  thumb_little_opposition: [hand_posture, "thumb tip against the little finger tip, the others extended"]
+  thumb_index_opposition: [hand_posture, "thumb tip against the index tip (OK sign), the others extended"]
+  little_ext_fist: [hand_posture, "little finger extended, the others flexed"]
+  # putEMG: pinches of the thumb and one finger without an object (with the index and little: GRABMyo's oppositions)
+  thumb_middle_opposition: [hand_posture, "thumb tip against the middle finger tip"]
+  thumb_ring_opposition: [hand_posture, "thumb tip against the ring finger tip"]

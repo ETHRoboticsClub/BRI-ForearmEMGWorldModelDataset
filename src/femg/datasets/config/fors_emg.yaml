@@ -1,0 +1,49 @@
+description: 19 intact subjects, 12 finger and wrist gestures held in 3 forearm orientations, 8 electrodes; cues only.
+citation: "FORS-EMG: A Novel sEMG Dataset for Hand Gesture Recognition Across Different Forearm Orientations (Kaggle)"
+license: see the Kaggle page (not stated in the files)
+url: https://www.kaggle.com/datasets/ummerummanchaity/fors-emg-a-novel-semg-dataset
+device: "8 active bar electrodes (modified MFI), 4 just below the elbow and 4 at mid-forearm, custom 8-channel amplifier"
+hand: right  # the photos of the acquisition PDF show a right arm; not stated
+
+native_fs: 985  # readme and Signal Acquisition.pdf
+effective_fs: 985
+mains_hz: 50  # recorded in Bangladesh
+emg_unit_scale: 1.0e-3  # readme: "physical units"; assumed mV (rest RMS ~0.012 -> 12 uV, as DB2's 3-14 uV)
+
+electrodes:
+  # Signal Acquisition.pdf: CH1, CH2 on flexor digitorum superficialis and flexor carpi radialis (anterior), CH3, CH4
+  # on extensor digitorum and flexor carpi ulnaris (posterior, as the PDF says), around the forearm just below the
+  # elbow (its photo; the text says "just proximal to the elbow joint"); CH5-CH8 at mid-forearm, each aligned with the
+  # one of CH1-CH4. One strap per row holds the four (the photo): a ring over muscles, not evenly spaced. Angles from
+  # the muscles (0 palmar, 90 radial, 180 dorsal, 270 ulnar), not measured: angle_sd 30. As a ring the elbow row
+  # fills the virtual band (z 0.13); as spots it would not (virtual_array.yaml builds the band from rings only)
+  - {name: rows, kind: bipolar, layout: ring, n: 4, z: [0.1, 0.5], angles: [345, 40, 180, 250], angle_sd: 30, z_sd: 0.1}
+montages:
+  ring4_elbow: 0-3
+
+# gestures_name.txt order; the reader numbers them so (FORSEMG.GESTURES)
+cues:
+  1: [Thumb_UP, thumb_up]
+  2: [Index, point_index]
+  3: [Right_Angle, thumb_index_ext]
+  4: [Peace, index_middle_ext]
+  5: [Index_Little, index_little_ext]
+  6: [Thumb_Little, thumb_little_ext]
+  7: [Hand_Close, fist]
+  8: [Hand_Open, hand_open]
+  9: [Wrist_Extension, wrist_ext]
+  10: [Wrist_Flexion, wrist_flex]
+  11: [Ulner_Deviation, ulnar_dev]
+  12: [Radial_Deviation, radial_dev]
+
+notes:
+  files: >-
+    Kaggle archive (303 MB): FORS-EMG/Subject<n>/<orientation>/<Gesture>-<trial>.mat, 19 subjects x 3 orientations
+    (folders Pronation/pronation, Rest/rest, Supination/supination) x 12 gestures x 5 trials, each `value` (8, 8000)
+    float64: one 8.1 s trial. Database Info/Subject Details.csv holds participants' names: not read, not copied
+  trial_timing: >-
+    no cue times in the files. 300 random trials, RMS per 0.5 s / the trial's median: 0.24, 0.51, then 1.18-0.94 to
+    the end: rest for 0.5 s, the movement in 0.5-1 s, held from 1 s. Stored as rest (0) for 0-0.5 s, no cue (-1)
+    for 0.5-1 s, the gesture from 1 s
+  sessions: one per forearm orientation (pronation, neutral = the files' "rest", supination), its 60 trials joined
+  ground: on the back of the hand (Signal Acquisition.pdf)

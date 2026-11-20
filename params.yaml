@@ -1,5 +1,13 @@
-datasets: [emg_fk, ninapro_db2, ninapro_db8, ninapro_db7, great]
+# Every dataset that is built (one dvc stage each). What uses which session:
+# - continuous decoding: the sessions with kinematics (label_source measured / mirrored)
+# - discrete decoding: the datasets of discrete_datasets (gesture.npy: shared gestures, src/femg/config/gestures.yaml)
+# - pretraining: every session (label_source none: EMG only)
+datasets: [emg_fk, ninapro_db2, ninapro_db8, ninapro_db7, great, ninapro_db5, ninapro_db3, ninapro_db4, fors_emg, grabmyo, emg_epn612, putemg, capgmyo_dba]
+discrete_datasets: [ninapro_db2, ninapro_db8, ninapro_db7, great, ninapro_db5, ninapro_db3, ninapro_db4, fors_emg, grabmyo, emg_epn612, putemg, capgmyo_dba]  # must also be in datasets
 percent: 100        # percentage of subjects per dataset
+split:              # sessions.parquet `split` per subject: keep the test subjects out of pretraining and training
+  test_percent: 20  # of each dataset's subjects (unless the dataset has an official split)
+  seed: 0
 workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
 processor:

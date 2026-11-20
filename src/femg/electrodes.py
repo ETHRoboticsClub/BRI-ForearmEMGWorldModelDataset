@@ -37,11 +37,24 @@ class ElectrodeGroup:
 
     @classmethod
     def ring(
-        cls, name: str, kind: str, n: int, z: float | list[float], first_angle: float | list[float] = 0.0, **placement
+        cls,
+        name: str,
+        kind: str,
+        n: int,
+        z: float | list[float],
+        first_angle: float | list[float] = 0.0,
+        angles: list[float] | None = None,
+        **placement,
     ):
         """n electrodes evenly spaced around the forearm, in increasing angle. Several z: one ring at each, in turn;
-        first_angle per ring (rows staggered) or one for all."""
+        first_angle per ring (rows staggered) or one for all. angles: n electrodes around the forearm at these angles
+        instead (a band whose electrodes sit over muscles, not evenly), the same in every ring."""
         heights = np.atleast_1d(z)
+        if angles is not None:
+            if len(angles) != n:
+                raise ValueError(f"electrode group {name}: n {n} but {len(angles)} angles")
+            points = [(angle, at) for at in heights for angle in angles]
+            return cls.from_points(name, kind, points, layout="ring", **placement)
         starts = np.broadcast_to(np.atleast_1d(first_angle), heights.shape)
         points = [(start + i * 360 / n, at) for at, start in zip(heights, starts, strict=True) for i in range(n)]
         return cls.from_points(name, kind, points, layout="ring", **placement)

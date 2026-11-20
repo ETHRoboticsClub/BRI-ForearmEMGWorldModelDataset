@@ -1,0 +1,45 @@
+description: 18 intact subjects, 8 NinaPro finger gestures, a 128-electrode HD grid around the forearm; 1 s per trial, no rest.
+citation: Geng et al. 2016, Scientific Reports 6:36571, doi:10.1038/srep36571; figshare doi:10.6084/m9.figshare.7210397
+license: CC0 (figshare)
+url: https://figshare.com/articles/dataset/7210397
+device: "CapgMyo device: 8 modules of 2 x 8 silver wet electrodes (differential), 1000 Hz, 16 bit"
+hand: right  # the paper: "wrapped around the right forearm"
+
+native_fs: 1000
+effective_fs: 1000  # hardware band-pass 20-380 Hz; the published data band-stopped 45-55 Hz (the paper, Table 1)
+mains_hz: 50  # recorded in Hangzhou, China (power line already removed by the authors)
+emg_unit_scale: 1.0e-3  # mV: the paper maps "[-2.5 mV, 2.5 mV]" to its images; s01 std 0.05-0.10, range +-1.26
+
+electrodes:
+  # The paper: 8 modules of a 2 x 8 array, "inter-electrode horizontal distance of 7.5 mm and a vertical distance of
+  # 10.05 mm", "wrapped around the right forearm and formed an 8 x 16 electrode array"; where along the forearm, the
+  # rotation and the channel order are not stated. Channel order from s01 (config notes channel_order): 16 columns of
+  # 8; the reader lists them ring by ring (CapgMyoDBa.RING_ORDER), so the grid is 8 rings of 16 around the arm, 10.05
+  # mm (0.039 of a 26 cm forearm) apart. Where the grid sits: assumed the upper forearm (z 0.15-0.42), z_sd 0.15.
+  # Which way the columns run around the arm, and the rows along it, is not known: mirror
+  - {name: grid, kind: bipolar, layout: ring, n: 16, z: [0.15, 0.189, 0.228, 0.267, 0.306, 0.345, 0.384, 0.423], angle_sd: 180, z_sd: 0.15, mirror: true}
+
+# The paper: "8 isometric and isotonic finger gestures (equivalent to Nos 13-20 in NinaPro)", i.e. exercise B 1-8 in
+# NinaPro's A/B/C numbering (config/cues/ninapro_abc.yaml 13-20); the order within 13-20 is assumed to follow the file
+# gesture ids 1-8 (not stated)
+cues:
+  1: [thumb up, thumb_up]
+  2: ["extension of index and middle, flexion of the others", index_middle_ext]
+  3: ["flexion of ring and little finger, extension of the others", ring_little_flex]
+  4: [thumb opposing base of little finger, thumb_opposition]
+  5: [abduction of all fingers, fingers_abduct]
+  6: [fingers flexed together in fist, fist]
+  7: [pointing index, point_index]
+  8: [adduction of extended fingers, fingers_adduct]
+
+notes:
+  files: >-
+    dba-s<n>.zip: <subject>-<gesture>-<trial>.mat, 8 gestures x 10 trials, each `data` (1000, 128) float, mV: 1 s of
+    a trial held 3-10 s (which second is not stated; no rest is published). 80 s per subject
+  channel_order: >-
+    s01, envelope (|x|, 50 ms mean) correlation of channel i with i+1: 0.81 inside blocks of 8, 0.45 across a block
+    edge; with i+8: 0.59 (raw 0.37, the highest raw offset): blocks of 8 are one column along the arm, i+8 the next
+    column around it
+  joins: >-
+    trials of 1 s joined: the processor's high-pass runs over the joins, so each trial starts with its transient
+    (settle_s masks only the kinematics, of which there are none)

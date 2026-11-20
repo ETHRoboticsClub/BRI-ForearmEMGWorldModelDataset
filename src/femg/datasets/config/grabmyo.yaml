@@ -1,0 +1,57 @@
+description: 43 intact subjects on 3 days, 16 hand and wrist gestures + rest, two forearm and two wrist rings; cues only.
+citation: Pradhan et al. 2022, Scientific Data 9:733, doi:10.1038/s41597-022-01836-y; PhysioNet doi:10.13026/89dm-f662
+license: CC BY-4.0 (PhysioNet page; the readme says Open Data Commons Attribution 1.0)
+url: https://physionet.org/content/grabmyo/1.1.0/
+device: "OT Bioelettronica EMG-USB2+, 28 Ambu gel electrodes: 2 rings of 8 on the forearm, 2 rings of 6 at the wrist"
+hand: right  # not stated; the drawing and photo of Electrodelocation.pdf show a right arm
+
+native_fs: 2048
+effective_fs: 2048  # DeviceInfo.pdf: hardware band-pass 10-450 Hz
+mains_hz: 60  # recorded in Waterloo, Canada
+emg_unit_scale: 1.0e-3  # the WFDB headers: mV
+
+electrodes:
+  # The PhysioNet page: "sixteen monopolar sEMG electrodes ... two rings, each consisting of eight electrodes equally
+  # spaced around the forearm"; ring centres 2 cm apart; "the first electrode in each ring ... on the centerline of
+  # the elbow crease" (palmar midline: angle 0). Electrodelocation.pdf: the forearm rings at ~1/3 of the forearm
+  # length (25.2 cm mean) from the elbow crease, the wrist rings 2 cm apart, the last ~2 cm above the wrist. Which way
+  # the numbers run around the arm is not stated: mirror. The page says "bipolar pairs", but 16 electrodes give 16
+  # channels and s01 day1 (rest and hand close) correlates 0.77 raw even between opposite channels: one shared
+  # reference, so monopolar (the virtual array removes their common average)
+  - {name: forearm_rings, kind: monopolar, layout: ring, n: 8, z: [0.29, 0.37], angle_sd: 15, z_sd: 0.05, mirror: true}
+  - {name: wrist_rings, kind: monopolar, layout: ring, n: 6, z: [0.84, 0.92], angle_sd: 15, z_sd: 0.05, mirror: true}
+montages:
+  ring8: 0-7
+  forearm: 0-15
+  wrist: 16-27
+
+# MotionSequence.txt order (1-17, 17 = rest, stored as 0). GestureList.JPG labels swap 5/6, 11/12 and 13/14 against
+# it; its pictures follow MotionSequence.txt for 5/6, and on s01 day1 (common-average referenced, RMS / rest) gesture
+# 12 drives the palmar channels 1-2 most (3.1-4.9) and the dorsal 5-8 least (1.8-2.4): flexion, as MotionSequence.txt
+cues:
+  1: [Lateral Prehension, lateral]
+  2: [Thumb Adduction, thumb_add]
+  3: [Thumb and Little Finger Opposition, thumb_little_opposition]
+  4: [Thumb and Index Finger Opposition, thumb_index_opposition]
+  5: [Thumb and Index Finger Extension, thumb_index_ext]
+  6: [Thumb and Little Finger Extension, thumb_little_ext]
+  7: [Index and Middle Finger Extension, index_middle_ext]
+  8: [Little Finger Extension, little_ext_fist]
+  9: [Index Finger Extension, point_index]
+  10: [Thumb Finger Extension, thumb_up]  # the picture: thumb out of a closed hand
+  11: [Wrist Extension, wrist_ext]
+  12: [Wrist Flexion, wrist_flex]
+  13: [Forearm Supination, supination]
+  14: [Forearm Pronation, pronation]
+  15: [Hand Open, hand_open]
+  16: [Hand Close, fist]
+
+notes:
+  files: >-
+    session<d>_participant<n>_gesture<k>_trial<t>.hea/.dat (WFDB), 17 gestures x 7 trials per day, each (10240, 32)
+    p_signal in mV; columns 17, 24, 25, 32 (U1-U4) all zero and not read. Downloaded from PhysioNet's open S3 mirror,
+    ~75 MB per subject and day
+  trial_timing: >-
+    s01 day1, forearm RMS per 0.5 s / the trial's median over 112 trials: 1.2 1.2 1.1 1.1 1.0 1.0 1.0 0.9 0.9 0.9: the
+    gesture is held through the whole 5 s (recording starts once it is formed), so every frame of a trial is its cue
+  sessions: one per day (the dataset's Session1-3), for cross-day robustness

@@ -19,6 +19,14 @@ electrodes:
 montages:
   ring8: 0-7  # assumed: first row = channels 1-8 (not documented)
 
+# trials.csv grasp ids (posture_data_collection.py of the repository); 5 (rest) is stored as 0 by the reader
+cues:
+  1: [lateral, lateral]
+  2: [open, hand_open]
+  3: [power, power]
+  4: [pointer, point_index]
+  6: [tripod, tripod]
+
 notes:
   files: >-
     participant1_day1_block1 opened: emg_data (150 trials, each (16, ~10000) float32 V, std 7-40 uV), glove_data

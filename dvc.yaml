@@ -24,6 +24,7 @@ stages:
       params:
         - percent
         - processor
+        - split
       outs:
         - data/processed/${item}
   calibration:  # the calibration baseline over every dataset
@@ -36,6 +37,14 @@ stages:
       - data/processed/ninapro_db8
       - data/processed/ninapro_db7
       - data/processed/great
+      - data/processed/ninapro_db5
+      - data/processed/ninapro_db3
+      - data/processed/ninapro_db4
+      - data/processed/fors_emg
+      - data/processed/grabmyo
+      - data/processed/emg_epn612
+      - data/processed/putemg
+      - data/processed/capgmyo_dba
     params:
       - datasets
     outs:

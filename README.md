@@ -52,8 +52,38 @@ On a big CPU machine next to the bucket: `sky launch -c femg-build sky/build.yam
 `sky/fetch.sh` brings back `dvc.lock` and the built data.
 
 Datasets (`DATASETS` in `src/femg/datasets/__init__.py`, status and caveats in `docs/data-spec.md`): EMG-FK,
-NinaPro DB2, DB7, DB8 and GREAT. All have hand kinematics and a ring of electrodes around the forearm, so all fill the
-virtual band (below).
+NinaPro DB2, DB3, DB4, DB5, DB7, DB8, GREAT, FORS-EMG, GRABMyo, EMG-EPN-612, putEMG and CapgMyo DB-a (all but
+EMG-FK, DB2, DB5, DB7, DB8 and GREAT: cues only, no kinematics). FORS-EMG downloads through `kagglehub` (no Kaggle
+account needed), GRABMyo from PhysioNet's open S3 mirror, EMG-EPN-612 one user at a time out of its Zenodo zip
+(`RemoteFile.member`), putEMG from the authors' share. **putEMG is CC BY-NC 4.0: non-commercial use only.** All have a ring of electrodes around the forearm, so all fill the virtual band
+(below).
+
+### Three uses of one build
+
+`datasets` in `params.yaml` is every dataset that is built. Which session serves what is in its `label_source`
+(`sessions.parquet`):
+
+| Use | Sessions | Targets |
+|---|---|---|
+| continuous decoding | `label_source` measured / mirrored (kinematics) | `labels.npy` |
+| discrete decoding | the datasets of `discrete_datasets` (`params.yaml`) | `gesture.npy` |
+| pretraining | every session, `none` included (EMG only) | none |
+
+- **Shared gestures**: each dataset's cue ids (`stimulus.npy`) map onto one vocabulary,
+  `src/femg/config/gestures.yaml` (append only: an id is a position, 0 = rest), through `cues:` in the dataset's
+  config (inline, or a table shared by one protocol: `config/cues/ninapro_bcd.yaml`). `gesture.npy` holds the shared
+  id per frame (-1: no cue, or a cue mapped to none), meta `gesture_names` the vocabulary and `gesture_families`
+  each gesture's coarse class (e.g. `power_wrap` holds GREAT power, DB8 cylindrical and NinaPro's sized wraps):
+  train on gestures for exact classes, on families for more classes shared across datasets. It is written by the
+  processed stage, so editing the vocabulary or a mapping does not redo the filtering.
+  `<dataset>/gestures.parquet`: seconds and repetitions per session and gesture;
+  `scripts/tests/gesture_balance.py` analyses them: per dataset (time, repetitions, class imbalance), pooled
+  (gestures and families across datasets) and per split, with two figures in `docs/figures`.
+- **Split**: `sessions.parquet` has a `split` column (train / test per subject, `split` in `params.yaml`), drawn
+  per condition (`Dataset.condition`: intact and amputee subjects each get their share of test subjects) and from
+  every subject, so it does not depend on `--percent`. Keep the test subjects out of pretraining too.
+- A session without kinematics gets `label_source: cue` when it has cues (DB2 E3, the force patterns), `none` when
+  not; its `labels.npy` is all NaN and the calibration baseline skips it.
 
 ## How a session is processed
 
@@ -66,7 +96,7 @@ session = dataset.load_session(subject, name, raw_dir)  # native rates, EMG in v
 session = processor.process(session, dataset)  # resample -> filter -> labels -> align -> anchors
 save_session(interim_folder, session, make_meta(dataset, session, processor))  # data/interim
 arrays, meta = processor.prepare(emg, kin, meta)  # from the interim session: virtual EMG, joints 0-1
-save_arrays(processed_folder, {**arrays, "stimulus": stimulus}, meta)  # data/processed
+save_arrays(processed_folder, {**arrays, "stimulus": stimulus, "gesture": gesture}, meta)  # data/processed
 ```
 
 The `Processor` (`src/femg/processor.py`) holds both stages as short lists of steps. `process`, raw -> interim:
@@ -99,7 +129,8 @@ Each tree has one folder per session (`<dataset>/<subject>/<session>`, the same 
 | interim | `kin.npy` | (T/r, 22) | the joints in radians, NaN = no label, at `label_fs` |
 | processed | `virtual.npy` | (T, 8) | **model input**: the EMG on the virtual band, normalized (1 ~ strong contraction) |
 | processed | `labels.npy` | (T/r, 22) | **targets**: the joints in 0 (~ open hand) - 1 (~ closed hand), NaN = no label |
-| both | `stimulus.npy` | (T/r,) | the instructed movement, 0 rest, -1 none |
+| both | `stimulus.npy` | (T/r,) | the instructed movement, the dataset's own ids (meta `stimulus_names`), 0 rest, -1 none |
+| processed | `gesture.npy` | (T/r,) | **discrete targets**: the shared gesture (meta `gesture_names`), 0 rest, -1 none |
 | both | `meta.json` | | dataset, electrodes, segments, the anchors (`emg_stats`, `kin_stats`; processed: `virtual_stats`), settings |
 
 `data/processed/calibration/` holds the calibration baseline (below). Augmenting in the training repo (turning or
@@ -306,8 +337,10 @@ volts): `Normalizer.emg(emg, meta["emg_stats"])`, then the band moved and the vi
    - `sessions(subject)`: the session names
    - `load_session(subject, session, raw_dir)`: a `Session` with EMG in volts and canonical joints in radians.
      Leave kinematics NaN where nothing was measured (never hold a pose), and when joining trials use
-     `concat_trials` and pass its starts as `segments`.
-3. Add it to `DATASETS` in `src/femg/datasets/__init__.py` and to `datasets` in `params.yaml`.
+     `concat_trials` and pass its starts as `segments`. Without kinematics `kin=None`, without cues `stimulus=None`.
+3. Add it to `DATASETS` in `src/femg/datasets/__init__.py` and to `datasets` in `params.yaml`. With cues: map them
+   in the config (`cues: {<id>: [<name in the dataset>, <shared gesture or null>]}`, adding a gesture at the end of
+   `src/femg/config/gestures.yaml` only when none is the same movement) and add it to `discrete_datasets`.
 4. `python scripts/pull_data.py --dataset <name> --percent 10`, then `python scripts/build_dataset.py --dataset <name>
    --percent 10 --workers 1` (one worker prints errors directly). Open one real file and record what you checked in
    the config's `notes`.

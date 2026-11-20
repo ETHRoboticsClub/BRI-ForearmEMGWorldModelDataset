@@ -18,6 +18,8 @@ electrodes:  # as DB2
 montages:
   ring8: 0-7  # assumed as in DB2/DB3/DB4 (the DB7 page gives no column order)
 
+cues: ninapro_bcd  # E1 = exercise B, E2 = C (config/cues/ninapro_bcd.yaml)
+
 notes:
   zip_members: "Subject_1.zip, Subject_21.zip listed: S{i}_E1_A1.mat, S{i}_E2_A1.mat (~0.6-0.9 GB each)"
   mat_variables: "S1_E1_A1 opened: emg (T,12) float32 V (rest RMS 5-30 uV), glove (T,18) no NaN, restimulus"

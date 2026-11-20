@@ -12,8 +12,8 @@ from femg.hand.joints import CYBERGLOVE_18
 REPO = "https://raw.githubusercontent.com/MoveR-Digital-Health-and-Care-Hub/posture_dataset_collection"
 COMMIT = "d1a7bdcc15075516262216c3c1c223ccbe5bea1a"
 FILES = ["emg_data.hdf5", "glove_data.hdf5", "trials.csv"]  # finger_data.hdf5 (5 finger positions) not used
-# trials.csv grasp ids (posture_data_collection.py of the repository); 5 is rest, stored as stimulus 0
-GRASPS = {1: "lateral", 2: "open", 3: "power", 4: "pointer", 5: "rest", 6: "tripod"}
+# trials.csv grasp id of rest (posture_data_collection.py of the repository), stored as stimulus 0; the other grasp ids
+# are the cues of config/great.yaml
 REST = 5
 
 
@@ -59,7 +59,6 @@ class GREAT(Dataset):
             "label_source": "measured",
             "kin_units": "rad_uncalibrated",
             "task": "5 grasps + rest held at 5 arm positions, trials joined",
-            "stimulus_names": {k: v for k, v in GRASPS.items() if k != REST},
             "trial_arm_positions": trials_table["target_position"].astype(int).tolist(),
         }
         return Session(

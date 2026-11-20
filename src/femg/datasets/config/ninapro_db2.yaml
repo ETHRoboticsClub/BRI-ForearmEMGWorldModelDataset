@@ -8,6 +8,9 @@ hand: right
 native_fs: 2000
 effective_fs: 2000
 mains_hz: 50
+# labels: glove (the raw CyberGlove of the DB2 files, sign-flipped) or db9 (the calibrated angles of NinaPro DB9, same
+# subjects; src/femg/datasets/ninapro_db9.py). can switch to db9 once scripts/tests/check_db9.py checked that every session lines up
+kin_source: glove
 
 electrodes:
   # The page puts the ring at the radio-humeral joint, just below the elbow (rotation and direction not documented),
@@ -19,6 +22,8 @@ electrodes:
   - {name: triceps, kind: bipolar, layout: spot, angle: 180, z: -0.4, angle_sd: 30, z_sd: 0.15}
 montages:
   ring8: 0-7
+
+cues: ninapro_bcd  # E1 = exercise B, E2 = C, E3 = D (config/cues/ninapro_bcd.yaml)
 
 notes:
   mat_variables: "DB2_s1 E1/E3 opened: emg (T,12) float32 V, glove (T,22), restimulus; E3 has no glove"

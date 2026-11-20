@@ -11,8 +11,17 @@ import yaml
 
 from femg.calib_baseline import FOLDER, CalibBaseline
 from femg.datasets import DATASETS, first_percent
+from femg.gestures import families, to_shared, vocabulary
 from femg.processor import Processor
-from femg.save import is_saved, make_meta, save_arrays, save_session, session_folder, write_index
+from femg.save import (
+    is_saved,
+    make_meta,
+    save_arrays,
+    save_session,
+    session_folder,
+    write_gesture_table,
+    write_index,
+)
 
 GB_PER_WORKER = 2.0  # peak RAM of one session (largest: NinaPro DB8 A1, a ~1 GB file)
 STAGES = ("interim", "processed", "calibration")
@@ -63,17 +72,34 @@ def build_interim(dataset, processor, subjects, raw_dir: Path, interim_dir: Path
     return sum(failures)
 
 
-def prepare_session(processor, source: Path, folder: Path, overwrite: bool) -> int:
+def gesture_meta(cues: dict) -> dict:
+    """The meta.json fields of the shared gestures: the vocabulary and where the dataset's cues go in it (taken from the
+    current configs, not the interim meta, so a vocabulary or mapping edit only redoes the processed stage)."""
+    return {
+        "stimulus_names": {str(cue): label for cue, (label, _) in cues.items()},
+        "cue_gestures": {str(cue): gesture for cue, (_, gesture) in cues.items()},
+        "gesture_names": list(vocabulary()),
+        "gesture_families": list(families()),
+    }
+
+
+def prepare_session(processor, source: Path, folder: Path, cues: dict, overwrite: bool) -> int:
     meta_file = folder / "meta.json"
     newer_source = meta_file.exists() and (source / "meta.json").stat().st_mtime > meta_file.stat().st_mtime
-    if not overwrite and not newer_source and is_saved(folder, processor.prepare_settings()):
+    gestures = gesture_meta(cues)
+    same_gestures = meta_file.exists() and all(
+        json.loads(meta_file.read_text()).get(k) == v for k, v in gestures.items()
+    )
+    if not overwrite and not newer_source and same_gestures and is_saved(folder, processor.prepare_settings()):
         print(f"  skip   {folder} (already prepared)", flush=True)
         return 0
     try:
         start = time.time()
         meta = json.loads((source / "meta.json").read_text())
         arrays, meta = processor.prepare(np.load(source / "emg.npy"), np.load(source / "kin.npy"), meta)
-        save_arrays(folder, {**arrays, "stimulus": np.load(source / "stimulus.npy")}, meta)
+        stimulus = np.load(source / "stimulus.npy")
+        arrays |= {"stimulus": stimulus, "gesture": to_shared(stimulus, cues)}
+        save_arrays(folder, arrays, meta | gestures)
         print(f"  built  {folder} in {time.time() - start:.0f} s", flush=True)
         return 0
     except Exception as error:
@@ -81,13 +107,21 @@ def prepare_session(processor, source: Path, folder: Path, overwrite: bool) -> i
         return 1
 
 
-def build_processed(dataset, processor, subjects, interim_dir: Path, out_dir: Path, workers: int, overwrite: bool):
+def build_processed(
+    dataset, processor, subjects, interim_dir: Path, out_dir: Path, workers: int, overwrite: bool, split: dict
+):
     sources = [m.parent for s in subjects for m in sorted((interim_dir / dataset.name / s).glob("*/meta.json"))]
     print(f"[{dataset.name}] processed: {len(sources)} interim sessions, {workers} workers")
-    jobs = [(processor, source, out_dir / source.relative_to(interim_dir), overwrite) for source in sources]
+    cues = dataset.config.cues
+    jobs = [(processor, source, out_dir / source.relative_to(interim_dir), cues, overwrite) for source in sources]
     failures = run(prepare_session, jobs, workers)
-    index = write_index(out_dir / dataset.name)
-    print(f"[{dataset.name}] processed: {len(index)} sessions on disk, {sum(failures)} failed")
+    index = write_index(out_dir / dataset.name, dataset.splits(split["test_percent"], split["seed"]))
+    gestures = write_gesture_table(out_dir / dataset.name)
+    n_test = (index["split"] == "test").sum()
+    print(
+        f"[{dataset.name}] processed: {len(index)} sessions on disk ({n_test} test), "
+        f"{gestures['gesture_id'].nunique() if len(gestures) else 0} shared gestures, {sum(failures)} failed"
+    )
     return sum(failures)
 
 
@@ -138,6 +172,10 @@ def main() -> None:
         workers = auto_workers()
     stages = args.stage or STAGES
     interim_dir, out_dir = Path(args.interim), Path(args.out)
+    not_built = sorted(set(params.get("discrete_datasets", [])) - set(params["datasets"]))
+    if not_built:
+        sys.exit(f"discrete_datasets must also be in datasets (the list that is built): {not_built}")
+    split = params.get("split", {"test_percent": 0, "seed": 0})
 
     n_failed = 0
     for name in args.dataset or params["datasets"]:
@@ -147,7 +185,9 @@ def main() -> None:
             raw_dir = Path(args.raw) / name
             n_failed += build_interim(dataset, processor, subjects, raw_dir, interim_dir, workers, args.overwrite)
         if "processed" in stages:
-            n_failed += build_processed(dataset, processor, subjects, interim_dir, out_dir, workers, args.overwrite)
+            n_failed += build_processed(
+                dataset, processor, subjects, interim_dir, out_dir, workers, args.overwrite, split
+            )
     if "calibration" in stages:
         build_calibration(params["datasets"], out_dir)  # over every dataset, not only the ones just built
 

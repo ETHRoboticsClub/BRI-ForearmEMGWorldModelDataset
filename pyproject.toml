@@ -15,6 +15,8 @@ dependencies = [
     "pyyaml>=6.0",
     "h5py>=3.9",   # MATLAB v7.3 files
     "mne>=1.5",    # EMG-FK .fif files
+    "kagglehub>=0.3",  # FORS-EMG (public Kaggle dataset, no credentials)
+    "wfdb>=4.1",  # GRABMyo (PhysioNet WFDB records)
 ]
 
 [project.optional-dependencies]
@@ -28,7 +30,7 @@ dev = ["pytest>=8", "ruff>=0.5", "pre-commit>=3"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-femg = ["config/*.yaml", "hand/models/*.json", "datasets/config/*.yaml"]
+femg = ["config/*.yaml", "hand/models/*.json", "datasets/config/*.yaml", "datasets/config/*.txt", "datasets/config/cues/*.yaml"]
 
 [tool.ruff]
 src = ["src", "scripts", "tools"]

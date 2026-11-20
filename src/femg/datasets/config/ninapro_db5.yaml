@@ -1,0 +1,43 @@
+description: 10 intact subjects, 52 instructed hand movements, two Myo armbands (low-cost, 200 Hz), raw CyberGlove II.
+citation: Pizzolato et al. 2017, PLOS One 12:e0186132
+license: CC BY-ND 4.0 (the DB5 page)
+url: https://ninapro.hevs.ch/instructions/DB5.html
+device: "2 Thalmic Myo armbands (8 + 8 dry bipolar electrodes): the first at the radio-humeral joint, the second next to it, turned by 22.5 deg"
+hand: right
+
+native_fs: 200
+# The Myo streams 200 Hz: exactly the processor fs (params.yaml), so nothing above 100 Hz and no resampling headroom.
+# Any fs above 200 skips DB5 (build_interim)
+effective_fs: 200
+mains_hz: 50
+emg_unit_scale: 1.0  # NOT volts: the Myo's raw 8-bit units (s1: std 3-20). Every step after reading divides each
+# channel by its own active level, so only a consumer of the absolute interim EMG level sees the difference
+
+electrodes:
+  # The page: "Columns 1-8 are the electrodes equally spaced around the forearm at the height of the radio humeral
+  # joint. Columns 9-16 represent the second Myo, tilted by 22.5 degrees clockwise". Where the second Myo sits along
+  # the arm is not documented: assumed next to the first, towards the wrist (a Myo pod is ~3.5 cm wide: z + 0.13 of
+  # a 26 cm forearm), hence z_sd 0.1. The sign of its turn in the repo's angles: s1 E1-E3, the log envelope of ring 1
+  # channel i correlates with ring 2 channels i and i-1 alike (0.79/0.78, 0.89/0.88, 0.83/0.83) and less with i+1
+  # (0.61, 0.79, 0.75): ring 2 channel j sits between ring 1 channels j and j+1, at +22.5 deg
+  - {name: rings, kind: bipolar, layout: ring, n: 8, z: [0.05, 0.18], first_angle: [0, 22.5], angle_sd: 180, z_sd: 0.1, mirror: true}
+montages:
+  ring8: 0-7
+
+cues: ninapro_abc  # E1 = exercise A (1-12), E2 = B (13-29), E3 = C (30-52), after ABC_CUE_OFFSETS (ninapro.py)
+
+notes:
+  mat_variables: >-
+    s1.zip opened: S1_E{1,2,3}_A1.mat with emg (T,16), acc (T,3), glove (T,22), stimulus, restimulus, repetition,
+    rerepetition, frequency 200; restimulus 0-12 / 0-17 / 0-23 (each exercise from 1), 6 repetitions of every cue (E2)
+  glove_signs: >-
+    raw CyberGlove as DB2: s1 E2 per repetition, abduction of all fingers (B 5) reads lower than adduction (B 8) on
+    the three spread sensors (0/6 reps > 0), radial deviation (15) lower than ulnar (16) (0/6), wrist flexion (13)
+    higher than extension (14) (6/6): NINAPRO_FLIPPED
+  glove_sensor_11: >-
+    index_middle_abd (sensor 11) left NaN: s1 E1/E2 1-99 % range ~850-1230 units against ~60-100 for the other
+    sensors (DB2 s1 the same: ~1310), the noise for which NinaPro DB9 drops it
+  exercise_a: order checked on s1 E1 (config/cues/ninapro_abc.yaml)
+  kin_lag: >-
+    kin_lag_s 0: scripts/tests/estimate_kin_lag.py --parts 1 on s01, speed target: E1 136, E2 134 (the one sharp
+    curve), E3 92 ms against DB2 s01 E1 137 (sharp), E2 154 ms; same clock as DB2

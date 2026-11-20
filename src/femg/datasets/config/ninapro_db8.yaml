@@ -16,6 +16,19 @@ electrodes:
 montages:
   ring8: 0-7  # assumed: first row = channels 1-8 (not documented)
 
+# Krasoulis et al. 2019. A1 S1: each repetition moves the joint once and back (2 crossings of its mean), as a
+# NinaPro repetition, so 1-5 share the single-digit gestures (also the force presses of DB2 exercise D)
+cues:
+  1: [thumb flexion/extension, thumb_flex]
+  2: [thumb abduction/adduction, thumb_abd]
+  3: [index flexion/extension, index_flex]
+  4: [middle flexion/extension, middle_flex]
+  5: [ring and little flexion/extension, ring_little_flex]
+  6: [index pointer, point_index]
+  7: [cylindrical grip, cylindrical]
+  8: [lateral grip, lateral]
+  9: [tripod grip, tripod]
+
 notes:
   mat_variables: "S1_E1_A3 opened: emg (T,16) float32 V, glove (T,18) no NaN, restimulus 0-9"
   glove_order: correlation structure matches CYBERGLOVE_18

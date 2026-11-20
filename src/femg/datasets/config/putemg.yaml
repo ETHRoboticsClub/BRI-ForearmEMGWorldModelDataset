@@ -1,0 +1,46 @@
+description: 44 intact subjects, 7 gestures + idle, 3 rings of 8 monopolar electrodes, two experiments a week apart; cues only.
+citation: Kaczmarek, Mankowski, Tomczynski 2019, Sensors 19:3548, doi:10.3390/s19163548
+license: CC BY-NC 4.0 (the paper) - non-commercial use only
+url: https://biolab.put.poznan.pl/putemg-dataset/
+device: "OT Bioelettronica MEBA, 24 Ag/AgCl electrodes in 3 elastic bands of 8, monopolar, reference and DRL at the wrist"
+hand: right  # the paper: "Electrodes were fixed around subject right forearm"
+
+native_fs: 5120  # the paper; the HDF5 index steps 0.1952 ms (5124 Hz measured on s03)
+effective_fs: 5120  # hardware band-pass 3-900 Hz
+mains_hz: 50  # recorded in Poznan, Poland
+# the paper (Eq. 1, read from the PMC text): mV = N * 5 / 2^12 * 1000 / 200 (12-bit ADC over 5 V, gain 200), so
+# V = N * 6.1035e-6. s03 repeats_long: N std 14-35 -> 85-215 uV, monopolar with the common mode in
+emg_unit_scale: 6.1035e-6
+
+electrodes:
+  # The paper (PMC6720505): 3 bands of 8 "uniformly" around the forearm (45 deg); "The first electrode of each band
+  # was placed over the ulna bone and numbered clockwise"; channels 1-8 the elbow band, 9-16 the middle, 17-24 the
+  # wrist band. The first band at ~1/4 of the forearm from the elbow, the next ~1/5 apart (fractions garbled in the
+  # PMC rendering: z_sd 0.1). The ulna's subcutaneous border is dorso-ulnar: 225 deg, angle_sd 30; "clockwise" seen
+  # from where is not stated: mirror. s03 repeats_long, common-average referenced: neighbours in a band correlate
+  # 0.41, the same channel of the next band 0.32, elbow and wrist bands -0.14: the bands as described
+  - {name: bands, kind: monopolar, layout: ring, n: 8, z: [0.25, 0.45, 0.65], first_angle: 225, angle_sd: 30, z_sd: 0.1, mirror: true}
+montages:
+  ring8: 0-7
+
+# TRAJ_GT codes (putemg_examples shallow_learn.py): 0 idle, 1 fist, 2 flexion, 3 extension, 6-9 pinch index, middle,
+# ring, small; -1 rejected ("contradictory labels ... marking them not to be processed") or not labelled
+cues:
+  1: [Fist, fist]
+  2: [Flexion, wrist_flex]
+  3: [Extension, wrist_ext]
+  6: [Pinch index, thumb_index_opposition]
+  7: [Pinch middle, thumb_middle_opposition]
+  8: [Pinch ring, thumb_ring_opposition]
+  9: [Pinch small, thumb_little_opposition]
+
+notes:
+  files: >-
+    Data-HDF5/<record>.hdf5 of the putEMG share, ~46 MB per record, 6 per participant (3 trajectories x 2
+    experiments; config/putemg_records.txt). s03 repeats_long opened: data/table values_block_3 (1746944, 29) float64,
+    EMG_1-24 raw ADC (-716..795)
+  labels: >-
+    TRAJ_GT (labels checked on the video, median-filtered); TRAJ_1 is the instruction, TRAJ_GT_NO_FILTER the raw video
+    labels: neither read. s03 repeats_long: idle 53 %, each gesture 5 %, -1 13 %
+  sessions: <trajectory>_<experiment>, experiment 1 and 2 by date (at least a week apart, the paper)
+  license: CC BY-NC 4.0, the only non-commercial dataset here

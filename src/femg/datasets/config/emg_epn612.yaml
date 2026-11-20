@@ -1,0 +1,42 @@
+description: 612 users, one Myo armband, 5 gestures + relaxed, 50 samples of each per user; cues (exact timing) only.
+citation: "EMG-EPN-612 Dataset, Artificial Intelligence and Computer Vision Research Lab, Escuela Politecnica Nacional, Quito; Zenodo doi:10.5281/zenodo.4421500"
+license: CC-BY-4.0 (Zenodo)
+url: https://zenodo.org/record/4421500
+device: "Thalmic Myo armband (8 dry bipolar electrodes), 200 Hz"
+hand: right  # not stated in the files; the users' handedness field is not the recorded arm
+
+native_fs: 200  # generalInfo.samplingFrequencyInHertz; as DB5, exactly the processor fs
+effective_fs: 200
+mains_hz: 60  # recorded in Quito, Ecuador
+emg_unit_scale: 1.0  # NOT volts: the Myo's raw 8-bit units (-128..127), as NinaPro DB5
+
+electrodes:
+  # userInfo.distanceFromElbowToMyoInCm: 6, 10 (training users 1, 2), 6, 9 (testing users 1, 2): ~8 cm, z 8 / 26 =
+  # 0.3, z_sd 0.1 for the spread (each session's own value is in meta myo_from_elbow_cm). The rotation of the band
+  # is not documented: any (angle_sd 180), mirror
+  - {name: myo, kind: bipolar, layout: ring, n: 8, z: 0.3, angle_sd: 180, z_sd: 0.1, mirror: true}
+montages:
+  ring8: 0-7
+
+# generalInfo.myoPredictionLabel: noGesture 0 (rest), fist 1, waveIn 2, waveOut 3, open 4, pinch 5
+cues:
+  1: [fist, fist]
+  2: [waveIn, wrist_flex]  # waving the hand in: palmar flexion of the wrist
+  3: [waveOut, wrist_ext]
+  4: [open, hand_open]
+  5: [pinch, thumb_index_opposition]  # thumb and index tips together, no object (not the tip_pinch grasp)
+
+notes:
+  files: >-
+    one zip (5.5 GB): <group>/user<n>/user<n>.json and photo.png, groups trainingJSON and testingJSON of 306 users.
+    Only the JSON is downloaded, read out of the zip with HTTP range requests (12-13 MB per user); photo.png is not
+  json: >-
+    generalInfo (200 Hz, 5 s), userInfo (age, gender, ethnic group, date, arm measures: none copied but
+    distanceFromElbowToMyoInCm), synchronizationGesture (5 samples, not read), trainingSamples and testingSamples
+    (150 each: 25 x noGesture, fist, waveIn, waveOut, open, pinch; emg ch1-ch8 int -128..127, ~1000 samples)
+  labels: >-
+    trainingSamples labelled in both groups, testingSamples labelled in the training group only (training user1 and
+    testing user1 opened). A gesture sample's groundTruth marks the movement (e.g. 213 of 996 samples): the cue
+    there, rest (0) around it; noGesture samples have none: rest throughout
+  split: the official one, sessions.parquet split = the group (EMGEPN612.splits)
+  sessions: samples1 (trainingSamples), samples2 (testingSamples; EMG only in the testing group, label_source none)
