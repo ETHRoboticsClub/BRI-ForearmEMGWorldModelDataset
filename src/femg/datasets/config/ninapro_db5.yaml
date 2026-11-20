@@ -3,6 +3,7 @@ citation: Pizzolato et al. 2017, PLOS One 12:e0186132
 license: CC BY-ND 4.0 (the DB5 page)
 url: https://ninapro.hevs.ch/instructions/DB5.html
 device: "2 Thalmic Myo armbands (8 + 8 dry bipolar electrodes): the first at the radio-humeral joint, the second next to it, turned by 22.5 deg"
+device_group: myo  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right
 
 native_fs: 200

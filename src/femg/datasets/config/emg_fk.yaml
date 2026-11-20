@@ -3,6 +3,7 @@ citation: Colot et al. 2026, arXiv:2604.22499, doi:10.5281/zenodo.19453843
 license: CC-BY-4.0
 url: https://zenodo.org/records/19453843
 device: MindRove 8-channel dry-electrode armband, 20 cm from the wrist
+device_group: mindrove  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right
 
 native_fs: 500

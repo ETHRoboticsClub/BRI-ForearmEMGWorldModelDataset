@@ -8,6 +8,8 @@ percent: 100        # percentage of subjects per dataset
 split:              # sessions.parquet `split` per subject: keep the test subjects out of pretraining and training
   test_percent: 20  # of each dataset's subjects (unless the dataset has an official split)
   seed: 0
+sampling:           # data/processed/sampling.parquet: device group -> dataset -> subject -> session (src/femg/sampling.py)
+  alpha: 0.5        # device groups and datasets drawn by (seconds)^alpha: 1 as the data, 0 all alike
 workers: auto       # parallel subjects; auto = from CPUs and free RAM (~2 GB per worker)
 
 processor:

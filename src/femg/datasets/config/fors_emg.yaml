@@ -3,6 +3,7 @@ citation: "FORS-EMG: A Novel sEMG Dataset for Hand Gesture Recognition Across Di
 license: see the Kaggle page (not stated in the files)
 url: https://www.kaggle.com/datasets/ummerummanchaity/fors-emg-a-novel-semg-dataset
 device: "8 active bar electrodes (modified MFI), 4 just below the elbow and 4 at mid-forearm, custom 8-channel amplifier"
+device_group: custom_8ch  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right  # the photos of the acquisition PDF show a right arm; not stated
 
 native_fs: 985  # readme and Signal Acquisition.pdf

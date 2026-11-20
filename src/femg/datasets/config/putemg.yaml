@@ -3,6 +3,7 @@ citation: Kaczmarek, Mankowski, Tomczynski 2019, Sensors 19:3548, doi:10.3390/s1
 license: CC BY-NC 4.0 (the paper) - non-commercial use only
 url: https://biolab.put.poznan.pl/putemg-dataset/
 device: "OT Bioelettronica MEBA, 24 Ag/AgCl electrodes in 3 elastic bands of 8, monopolar, reference and DRL at the wrist"
+device_group: ot_monopolar  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right  # the paper: "Electrodes were fixed around subject right forearm"
 
 native_fs: 5120  # the paper; the HDF5 index steps 0.1952 ms (5124 Hz measured on s03)

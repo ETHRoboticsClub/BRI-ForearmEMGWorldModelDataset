@@ -107,7 +107,10 @@ def test_processed_stage_writes_gestures(tmp_path):
     interim = tmp_path / "interim" / "ninapro_db2" / "s01" / "E3"
     save_session(interim, processed, make_meta(dataset, processed, processor))
     out = tmp_path / "processed" / "ninapro_db2" / "s01" / "E3"
-    assert build_dataset.prepare_session(processor, interim, out, dataset.config.cues, overwrite=False) == 0
+    assert (
+        build_dataset.prepare_session(processor, interim, out, dataset.config.cues, "delsys_trigno", overwrite=False)
+        == 0
+    )
 
     gesture, stimulus = np.load(out / "gesture.npy"), np.load(out / "stimulus.npy")
     meta = json.loads((out / "meta.json").read_text())
@@ -277,3 +280,34 @@ def test_capgmyo_ring_order(tmp_path):
     assert first[:3].tolist() == [0, 8, 16]  # ring 1: the first electrode of columns 1, 2, 3
     assert first[16] == 1  # ring 2 starts with the second electrode of column 1
     assert len(session.segments) == 80 and set(np.unique(session.stimulus)) == set(range(1, 9))
+
+
+def test_sampling_probabilities():
+    from femg.sampling import probabilities
+
+    sessions = pd.DataFrame(
+        {
+            "device_group": ["myo", "myo", "myo", "ring"],
+            "dataset": ["big", "big", "small", "ring_set"],
+            "subject": ["a", "b", "c", "d"],
+            "s": [900.0, 100.0, 100.0, 100.0],
+        }
+    )
+    p = probabilities(sessions, "s", alpha=1.0)
+    assert p.sum() == pytest.approx(1)
+    assert p[3] == pytest.approx(100 / 1200)  # alpha 1: groups and datasets in proportion to their seconds
+    assert p[0] == pytest.approx(p[1])  # subjects of a dataset drawn alike, whatever their hours
+    flat = probabilities(sessions, "s", alpha=0.0)
+    assert flat[3] == pytest.approx(0.5) and flat[2] == pytest.approx(0.25)  # alpha 0: every group, dataset alike
+    assert probabilities(sessions.assign(s=[0.0, 0, 0, 100]), "s", 0.5).tolist() == [0, 0, 0, 1]
+
+
+def test_session_seconds():
+    from femg.sampling import session_seconds
+
+    envelope = np.full((1000, 4), 0.05)
+    envelope[600:] = 0.5  # 400 active frames, 10x the floor
+    gesture = np.r_[np.zeros(500), np.full(300, 3), np.full(200, -1)]
+    s = session_seconds(envelope, gesture, np.array([True, True, False, True]), label_fs=100)
+    assert s == {"gesture_s": 3.0, "rest_s": 5.0, "active_s": 4.0}
+    assert session_seconds(envelope, gesture, np.zeros(4, bool), 100)["active_s"] == 0.0

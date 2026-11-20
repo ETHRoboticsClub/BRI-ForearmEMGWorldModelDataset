@@ -3,6 +3,7 @@ citation: GREAT, Scientific Data 2024, doi:10.1038/s41597-024-04296-8, doi:10.50
 license: CC0-1.0
 url: https://datadryad.org/dataset/doi:10.5061/dryad.8sf7m0czv
 device: 16 Delsys Trigno in two rows of 8 around the forearm
+device_group: delsys_trigno  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right
 
 native_fs: 2000

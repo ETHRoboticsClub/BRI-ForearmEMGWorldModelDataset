@@ -3,6 +3,7 @@ citation: "EMG-EPN-612 Dataset, Artificial Intelligence and Computer Vision Rese
 license: CC-BY-4.0 (Zenodo)
 url: https://zenodo.org/record/4421500
 device: "Thalmic Myo armband (8 dry bipolar electrodes), 200 Hz"
+device_group: myo  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right  # not stated in the files; the users' handedness field is not the recorded arm
 
 native_fs: 200  # generalInfo.samplingFrequencyInHertz; as DB5, exactly the processor fs

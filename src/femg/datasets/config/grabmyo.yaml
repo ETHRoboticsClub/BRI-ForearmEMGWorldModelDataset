@@ -3,6 +3,7 @@ citation: Pradhan et al. 2022, Scientific Data 9:733, doi:10.1038/s41597-022-018
 license: CC BY-4.0 (PhysioNet page; the readme says Open Data Commons Attribution 1.0)
 url: https://physionet.org/content/grabmyo/1.1.0/
 device: "OT Bioelettronica EMG-USB2+, 28 Ambu gel electrodes: 2 rings of 8 on the forearm, 2 rings of 6 at the wrist"
+device_group: ot_monopolar  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right  # not stated; the drawing and photo of Electrodelocation.pdf show a right arm
 
 native_fs: 2048

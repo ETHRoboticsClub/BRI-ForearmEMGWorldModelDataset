@@ -39,6 +39,7 @@ class DatasetConfig:
     license: str
     url: str
     device: str
+    device_group: str  # recording setups that give alike signals (myo, delsys_trigno, ...): the first level of sampling
     native_fs: float
     effective_fs: float  # before any upsampling by the authors
     mains_hz: float | None

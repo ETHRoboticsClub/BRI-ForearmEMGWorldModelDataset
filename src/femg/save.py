@@ -21,6 +21,10 @@ INDEX_COLUMNS = [
     "n_labels",
     "duration_s",
     "device",
+    "device_group",  # processed only, as the three below (src/femg/sampling.py)
+    "gesture_s",
+    "rest_s",
+    "active_s",
 ]
 
 

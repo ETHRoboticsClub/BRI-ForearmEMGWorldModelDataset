@@ -7,12 +7,14 @@ from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from femg.calib_baseline import FOLDER, CalibBaseline
 from femg.datasets import DATASETS, first_percent
 from femg.gestures import families, to_shared, vocabulary
 from femg.processor import Processor
+from femg.sampling import sampling_table, session_seconds
 from femg.save import (
     is_saved,
     make_meta,
@@ -24,7 +26,8 @@ from femg.save import (
 )
 
 GB_PER_WORKER = 2.0  # peak RAM of one session (largest: NinaPro DB8 A1, a ~1 GB file)
-STAGES = ("interim", "processed", "calibration")
+STAGES = ("interim", "processed", "calibration", "sampling")
+SAMPLING_FILE = "sampling.parquet"
 
 
 def run(function, jobs: list[tuple], workers: int) -> list:
@@ -72,25 +75,26 @@ def build_interim(dataset, processor, subjects, raw_dir: Path, interim_dir: Path
     return sum(failures)
 
 
-def gesture_meta(cues: dict) -> dict:
-    """The meta.json fields of the shared gestures: the vocabulary and where the dataset's cues go in it (taken from the
-    current configs, not the interim meta, so a vocabulary or mapping edit only redoes the processed stage)."""
+def config_meta(cues: dict, device_group: str) -> dict:
+    """The meta.json fields taken from the current configs, not the interim meta, so editing the gesture vocabulary, a
+    mapping or a device group only redoes the processed stage: the shared gestures and the sampling group."""
     return {
         "stimulus_names": {str(cue): label for cue, (label, _) in cues.items()},
         "cue_gestures": {str(cue): gesture for cue, (_, gesture) in cues.items()},
         "gesture_names": list(vocabulary()),
         "gesture_families": list(families()),
+        "device_group": device_group,
     }
 
 
-def prepare_session(processor, source: Path, folder: Path, cues: dict, overwrite: bool) -> int:
+def prepare_session(processor, source: Path, folder: Path, cues: dict, device_group: str, overwrite: bool) -> int:
     meta_file = folder / "meta.json"
     newer_source = meta_file.exists() and (source / "meta.json").stat().st_mtime > meta_file.stat().st_mtime
-    gestures = gesture_meta(cues)
-    same_gestures = meta_file.exists() and all(
-        json.loads(meta_file.read_text()).get(k) == v for k, v in gestures.items()
+    from_config = config_meta(cues, device_group)
+    same_config = meta_file.exists() and all(
+        json.loads(meta_file.read_text()).get(k) == v for k, v in from_config.items()
     )
-    if not overwrite and not newer_source and same_gestures and is_saved(folder, processor.prepare_settings()):
+    if not overwrite and not newer_source and same_config and is_saved(folder, processor.prepare_settings()):
         print(f"  skip   {folder} (already prepared)", flush=True)
         return 0
     try:
@@ -98,8 +102,11 @@ def prepare_session(processor, source: Path, folder: Path, cues: dict, overwrite
         meta = json.loads((source / "meta.json").read_text())
         arrays, meta = processor.prepare(np.load(source / "emg.npy"), np.load(source / "kin.npy"), meta)
         stimulus = np.load(source / "stimulus.npy")
-        arrays |= {"stimulus": stimulus, "gesture": to_shared(stimulus, cues)}
-        save_arrays(folder, arrays, meta | gestures)
+        gesture = to_shared(stimulus, cues)
+        arrays |= {"stimulus": stimulus, "gesture": gesture}
+        envelope = processor.normalizer.envelope(arrays["virtual"])
+        seconds = session_seconds(envelope, gesture, np.asarray(meta["virtual_covered"], bool), meta["label_fs"])
+        save_arrays(folder, arrays, meta | from_config | seconds)
         print(f"  built  {folder} in {time.time() - start:.0f} s", flush=True)
         return 0
     except Exception as error:
@@ -112,8 +119,10 @@ def build_processed(
 ):
     sources = [m.parent for s in subjects for m in sorted((interim_dir / dataset.name / s).glob("*/meta.json"))]
     print(f"[{dataset.name}] processed: {len(sources)} interim sessions, {workers} workers")
-    cues = dataset.config.cues
-    jobs = [(processor, source, out_dir / source.relative_to(interim_dir), cues, overwrite) for source in sources]
+    cues, group = dataset.config.cues, dataset.config.device_group
+    jobs = [
+        (processor, source, out_dir / source.relative_to(interim_dir), cues, group, overwrite) for source in sources
+    ]
     failures = run(prepare_session, jobs, workers)
     index = write_index(out_dir / dataset.name, dataset.splits(split["test_percent"], split["seed"]))
     gestures = write_gesture_table(out_dir / dataset.name)
@@ -137,6 +146,27 @@ def build_calibration(names: list[str], out_dir: Path) -> None:
     print(f"[calibration] {len(baseline.sessions)} of {len(folders)} sessions aligned ({counts}) -> {out_dir / FOLDER}")
 
 
+def build_sampling(names: list[str], discrete: list[str], alpha: float, out_dir: Path) -> None:
+    """out_dir/sampling.parquet: per processed session of `names`, how often to draw it for pretraining, discrete and
+    continuous decoding (src/femg/sampling.py)."""
+    tables = [pd.read_parquet(f) for name in names if (f := out_dir / name / "sessions.parquet").exists()]
+    if not tables:
+        print("[sampling] no processed sessions, skipped")
+        return
+    index = pd.concat(tables, ignore_index=True)
+    groups = {name: DATASETS[name]().config.device_group for name in index["dataset"].unique()}
+    index["device_group"] = index["device_group"].fillna(index["dataset"].map(groups))  # from the config if not built
+    missing = index[index["active_s"].isna()]["dataset"].unique()
+    if len(missing):
+        print(f"[sampling] no seconds in {list(missing)} (processed before they were written): rebuild them")
+    table = sampling_table(index, discrete, alpha)
+    table.to_parquet(out_dir / SAMPLING_FILE, index=False)
+    shares = table.groupby("dataset")[["p_pretrain", "p_discrete", "p_continuous"]].sum()
+    hours = index.groupby("dataset")["duration_s"].sum() / 3600
+    print(f"[sampling] alpha {alpha}, share of draws per dataset (train subjects) -> {out_dir / SAMPLING_FILE}")
+    print(shares.assign(hours=hours).round(3).sort_values("hours", ascending=False).to_string())
+
+
 def auto_workers() -> int:
     cpus = os.cpu_count() or 1
     try:
@@ -151,7 +181,7 @@ def auto_workers() -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="data/raw -> data/interim/<dataset> -> data/processed/<dataset>, then the calibration baseline "
-        "(resumable)."
+        "and the sampling table (resumable)."
     )
     parser.add_argument("--params", default="params.yaml")
     parser.add_argument("--dataset", action="append", choices=list(DATASETS), help="repeatable; default: params")
@@ -190,6 +220,9 @@ def main() -> None:
             )
     if "calibration" in stages:
         build_calibration(params["datasets"], out_dir)  # over every dataset, not only the ones just built
+    if "sampling" in stages:
+        sampling = params.get("sampling", {"alpha": 0.5})
+        build_sampling(params["datasets"], params.get("discrete_datasets", []), sampling["alpha"], out_dir)
 
     sys.exit(1 if n_failed else 0)
 

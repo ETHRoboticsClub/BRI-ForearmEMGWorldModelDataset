@@ -84,6 +84,12 @@ account needed), GRABMyo from PhysioNet's open S3 mirror, EMG-EPN-612 one user a
   every subject, so it does not depend on `--percent`. Keep the test subjects out of pretraining too.
 - A session without kinematics gets `label_source: cue` when it has cues (DB2 E3, the force patterns), `none` when
   not; its `labels.npy` is all NaN and the calibration baseline skips it.
+- **Sampling** (`src/femg/sampling.py`, the `sampling` stage): EMG-EPN-612 alone holds over half of the hours, so
+  drawing windows in proportion to the data would mostly train on one Myo setup. `data/processed/sampling.parquet`
+  gives every session (train subjects) its probability for pretraining (`p_pretrain`, by seconds of active EMG),
+  discrete (`p_discrete`) and continuous decoding (`p_continuous`): device group (`device_group` in each dataset's
+  config) and dataset drawn by (seconds)^`alpha` (`sampling` in `params.yaml`), subjects of a dataset alike,
+  sessions by their seconds. `sessions.parquet` has the seconds behind it: `gesture_s`, `rest_s`, `active_s`.
 
 ## How a session is processed
 

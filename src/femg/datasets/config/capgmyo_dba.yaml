@@ -3,6 +3,7 @@ citation: Geng et al. 2016, Scientific Reports 6:36571, doi:10.1038/srep36571; f
 license: CC0 (figshare)
 url: https://figshare.com/articles/dataset/7210397
 device: "CapgMyo device: 8 modules of 2 x 8 silver wet electrodes (differential), 1000 Hz, 16 bit"
+device_group: hd_grid  # the sampling group (params.yaml sampling; README: Sampling)
 hand: right  # the paper: "wrapped around the right forearm"
 
 native_fs: 1000
