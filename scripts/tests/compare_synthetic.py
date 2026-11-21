@@ -1,4 +1,6 @@
 import argparse
+import dataclasses
+import hashlib
 import json
 import logging
 import warnings
@@ -12,6 +14,9 @@ import pandas as pd
 import yaml
 from myogen import Electrode, Electrodes, JointAdapter, SimParams, Simulator, Subject
 from myogen.inputs.motion import REST_POSTURE
+from myogen.parallel import n_workers, process_pool
+from myogen.simulation import acquisition
+from myogen.simulation.muscle_solver import MuscleActivity
 from myogen.tools.calibration import statistics
 
 from femg.calib_baseline import CalibBaseline
@@ -26,6 +31,13 @@ CONFIG = Path(__file__).parents[2] / "src/femg/config/synthetic.yaml"
 DATASET_COLORS = {"emg_fk": "#2a78d6", "ninapro_db2": "#eb6834", "ninapro_db7": "#1baf7a", "ninapro_db8": "#8a5cd1"}
 REAL, SIM = "#5f5e5a", "#d1495b"
 N_ANGLES = 8  # electrodes per ring
+EMG_ONLY = (
+    "ied_mm",
+    "monopolar_reference",
+    "spots",
+    "ring_offset_deg",
+    "noise_uv",
+)  # settings the muscle activity ignores
 STATS = {  # myogen statistic: label
     "autocorr_50ms": "autocorr 50 ms",
     "autocorr_200ms": "autocorr 200 ms",
@@ -46,14 +58,18 @@ class SyntheticCheck:
     through the interim filters; then its RMS against the real one."""
 
     free_movement: dict[str, list[str]]
+    required_joints: list[str]
+    excluded_cues: dict[str, dict[str, list[int]]]
     conditions: list[str]
     hand: str
     subject: dict
     params: dict
     random_subject: bool
     ied_mm: float
+    noise_uv: float
     monopolar_reference: str
     rest_anchor: bool
+    window_rest: bool
     reps_per_cue: int
     pad_s: float
     chunk_s: float
@@ -61,38 +77,79 @@ class SyntheticCheck:
     skip_s: float
     spots: bool
     placement: str
-    sim_anchor: bool
+    ring_offset_deg: float
+    ring_reversed: bool
+    target: dict
+    augment: dict
+    recording: str
 
     @classmethod
     def load(cls, path: Path = CONFIG) -> "SyntheticCheck":
         return cls(**yaml.safe_load(path.read_text()))
 
     def settings(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if k not in ("free_movement", "placement", "sim_anchor")}
+        return {
+            k: v
+            for k, v in self.__dict__.items()
+            if k
+            not in (
+                "free_movement",
+                "required_joints",
+                "placement",
+                "ring_reversed",
+                "target",
+                "augment",
+                "ceiling",
+                "surface_gains",
+            )
+        }
 
-    def sessions(self, interim: Path, per_dataset: int, datasets: list[str] | None = None) -> list[Path]:
+    def sessions(
+        self,
+        interim: Path,
+        per_dataset: int | None = None,
+        datasets: list[str] | None = None,
+        part: str = "tune",
+        allowed: set[str] | None = None,
+    ) -> list[Path]:
+        """Free-movement sessions of subjects drawn at random (target seed) per dataset: part "tune" the first
+        target["tune"] of them (every decision is made on these), "validate" the next target["validate"] (held out),
+        "all" both; per_dataset overrides the count of the part. allowed: session keys to draw from (e.g. those with
+        a known band placement)."""
         out = []
         for dataset, names in self.free_movement.items():
             if datasets and dataset not in datasets:
                 continue
-            folders = [
-                m.parent
-                for m in sorted((interim / dataset).glob("*/*/meta.json"))
-                if m.parent.name in names and json.loads(m.read_text())["condition"] in self.conditions
-            ]
-            subjects = sorted({f.parent.name for f in folders})[:per_dataset]
-            out += [f for f in folders if f.parent.name in subjects]
+            folders = []
+            for m in sorted((interim / dataset).glob("*/*/meta.json")):
+                meta = json.loads(m.read_text())
+                if m.parent.name in names and meta["condition"] in self.conditions and self.tracked(meta):
+                    if allowed is None or meta["key"] in allowed:
+                        folders.append(m.parent)
+            subjects = sorted({f.parent.name for f in folders})
+            rng = np.random.default_rng([self.target["seed"], zlib.crc32(dataset.encode())])
+            subjects = [subjects[i] for i in rng.permutation(len(subjects))]
+            tune, validate = self.target["tune"], self.target["validate"]
+            start, count = {"tune": (0, tune), "validate": (tune, validate), "all": (0, tune + validate)}[part]
+            chosen = subjects[start : start + (per_dataset or count)]
+            out += [f for f in folders if f.parent.name in chosen]
         return out
+
+    def tracked(self, meta: dict) -> bool:
+        """Whether the session's kinematics hold every required joint."""
+        measured = {list(JOINT_INDEX)[i] for i in meta.get("measured_joints") or []}
+        return set(self.required_joints) <= measured
 
     # The motion
 
-    def windows(self, stimulus: np.ndarray, label_fs: float) -> list[tuple[int, int]]:
-        """[start, end) label frames of each simulated motion: the first repetitions of every cue with rest around
-        them, or evenly spaced windows without cues."""
+    def windows(self, stimulus: np.ndarray, label_fs: float, meta: dict) -> list[tuple[int, int]]:
+        """[start, end) label frames of each simulated motion: the first repetitions of every cue (but the excluded
+        ones) with rest around them, or evenly spaced windows without cues."""
         n, pad = len(stimulus), round(self.pad_s * label_fs)
+        excluded = self.excluded_cues.get(meta["dataset"], {}).get(meta["session"], [])
         if (stimulus > 0).any():
             out = []
-            for cue in np.unique(stimulus[stimulus > 0]):
+            for cue in np.setdiff1d(np.unique(stimulus[stimulus > 0]), excluded):
                 for start, end in runs(stimulus == cue)[: self.reps_per_cue]:
                     out.append((max(0, start - pad), min(n, end + pad)))
             return out
@@ -104,9 +161,10 @@ class SyntheticCheck:
         """Interim joints -> the model's (rad): each joint in 0-1 by its anchors, then onto the model's range
         (the hand mapping, as the explorer poses the hand). Works alike on calibrated and raw gloves.
 
-        rest_anchor (sessions with a rest cue): the session's median rest posture is the model's relaxed hand, the
-        0-1 span keeps its size. Without it a session of mostly extensions (NinaPro exercise B) puts rest at ~0.7,
-        a half-closed hand the model holds actively."""
+        rest_anchor (sessions with a rest cue): the session's median rest posture is the model's relaxed hand, and
+        the session's extremes the joint's (piecewise linear on either side of rest). Without it a session of mostly
+        extensions (NinaPro exercise B) puts rest at ~0.7, a half-closed hand the model holds actively. (Keeping the
+        0-1 span's size around rest instead put straight fingers 30-45 deg into hyperextension.)"""
         unit = np.clip(Normalizer.kin(kin, meta["kin_stats"]), 0, 1)
         stats = meta["kin_stats"]
         low, high, mean = (as_array(stats[k]) for k in ("low", "high", "mean"))
@@ -125,8 +183,11 @@ class SyntheticCheck:
                 c = centers[JOINT_INDEX[rule.label]]
                 if rule.neutral_mean and 0 < c < 1:
                     done[rule.joint] = np.where(x < c, rule.at_0 * (c - x) / c, rule.at_1 * (x - c) / (1 - c))
-                elif anchored and np.isfinite(c):
-                    done[rule.joint] = REST_POSTURE[rule.joint] + (x - c) * (rule.at_1 - rule.at_0)
+                elif anchored and np.isfinite(c) and 0 < c < 1:  # rest -> relaxed hand, the extremes -> at_0, at_1
+                    rest = REST_POSTURE[rule.joint]
+                    done[rule.joint] = np.where(
+                        x < c, rule.at_0 + (rest - rule.at_0) * x / c, rest + (rule.at_1 - rest) * (x - c) / (1 - c)
+                    )
                 else:
                     done[rule.joint] = rule.at_0 + x * (rule.at_1 - rule.at_0)
             elif rule.source:
@@ -153,41 +214,99 @@ class SyntheticCheck:
             positions = np.where(np.isfinite(rings), rings, spots)
         derivation = "bipolar" if positions[channels, 2].all() else "monopolar"
         length_cm = 25.8  # myogen's forearm, elbow to wrist
+        turn = np.where(np.arange(len(channels)) < n_ring, self.ring_offset_deg, 0.0)  # spots sit on a muscle
         electrodes = [
             Electrode(
-                angle_deg=(a - 90 + 180) % 360 - 180,  # femg 0 palmar, 90 radial; myogen 0 radial, -90 palmar
+                angle_deg=float(
+                    (a - 90 + t + 180) % 360 - 180
+                ),  # femg 0 palmar, 90 radial; myogen 0 radial, -90 palmar
                 position_cm=float(z) * length_cm,
                 ied_mm=self.ied_mm,
                 name=f"ch{c}",
             )
-            for c, (a, z) in zip(channels, positions[channels, :2], strict=True)
+            for c, (a, z), t in zip(channels, positions[channels, :2], turn, strict=True)
         ]
-        device = {"device": "raw", "fs": 2000.0, "mains_hz": meta["mains_hz"]}
+        device = {"device": "raw", "fs": 2000.0, "mains_hz": meta["mains_hz"], "noise_uv": self.noise_uv}
         electrodes = Electrodes(electrodes, derivation=derivation, reference=self.monopolar_reference, **device)
         return electrodes, channels, n_ring
 
-    def simulate(self, folder: Path, cache: Path, workers: int | None) -> dict:
-        """The motions of a session through myogen -> the EMG as interim (V, fs, filtered), cached."""
-        meta = json.loads((folder / "meta.json").read_text())
-        file = cache / f"{meta['key']}.npz"
-        if file.exists():
-            saved = np.load(file, allow_pickle=False)
-            if json.loads(str(saved["settings"])) == self.settings():
-                return {k: saved[k] for k in ("emg", "windows", "channels", "n_ring")}
-        kin, stimulus = np.load(folder / "kin.npy"), np.load(folder / "stimulus.npy")
-        windows = self.windows(stimulus, meta["label_fs"])
-        angles = self.model_angles(kin, meta, stimulus)
+    def simulator(self, meta: dict, subject: Subject | None = None) -> tuple[Simulator, np.ndarray, int]:
+        """myogen for a session: its electrodes (and their channels, how many are ring), the subject (the config's
+        unless given), the params."""
         electrodes, channels, n_ring = self.electrodes(meta)
+        return Simulator(electrodes, self.person(meta, subject), SimParams().replace(**self.params)), channels, n_ring
+
+    def person(self, meta: dict, subject: Subject | None = None) -> Subject:
+        """The subject a session is simulated with: the given one, else the config's (random per session if set)."""
+        if subject is not None:
+            return subject
         seed = zlib.crc32(meta["key"].encode())
         subject = Subject.random(seed) if self.random_subject else Subject()
-        subject = Subject.from_dict({**subject.to_dict(), **self.subject})
-        motions = [JointAdapter()({j: q[a:b] for j, q in angles.items()}, meta["label_fs"]) for a, b in windows]
-        params = SimParams().replace(**self.params)
-        recordings = Simulator(electrodes, subject, params).run(motions, workers=workers, progress=True)
+        return Subject.from_dict({**subject.to_dict(), **self.subject})
+
+    def resolved(self, meta: dict, subject: Subject | None, stages: tuple[str, ...] | None = None) -> dict:
+        """The settings with myogen's defaults filled in (subject and params), so a cache follows myogen's changes."""
+        params = dataclasses.asdict(SimParams().replace(**self.params))
+        params = {k: v for k, v in params.items() if stages is None or k in stages}
+        return self.settings() | {"subject": self.person(meta, subject).to_dict(), "params": params}
+
+    def mechanics_settings(self, meta: dict, subject: Subject | None) -> dict:
+        """What the muscle activity depends on: everything but the electrodes and the EMG / device parameters."""
+        out = self.resolved(meta, subject, ("musculoskeletal", "control", "effort"))
+        return {k: v for k, v in out.items() if k not in EMG_ONLY}
+
+    def activity(self, folder: Path, cache: Path, workers: int | None, subject: Subject | None = None) -> dict:
+        """The muscle activity of a session's motions (drive, joint state, forearm / wrist speed per control tick,
+        and each motion's length): the slow part of myogen, cached apart from the EMG."""
+        meta = json.loads((folder / "meta.json").read_text())
+        file = cache / meta["key"] / f"activity_{digest(self.mechanics_settings(meta, subject))}.npz"
+        if file.exists():
+            return dict(np.load(file, allow_pickle=False))
+        kin, stimulus = np.load(folder / "kin.npy"), np.load(folder / "stimulus.npy")
+        windows = self.windows(stimulus, meta["label_fs"], meta)
+        angles = self.model_angles(kin, meta, stimulus)
+        simulator, _, _ = self.simulator(meta, subject)
+        cued = self.window_rest and (stimulus > 0).any()
+        motions = [
+            JointAdapter()(
+                {j: q[a:b] for j, q in angles.items()}, meta["label_fs"], stimulus[a:b] == 0 if cued else None
+            )
+            for a, b in windows
+        ]
+        runs = simulator.simulate(motions, workers=workers, progress=True)
+        out = {
+            "drive": np.concatenate([r.activity.drive for r in runs]).astype(np.float32),
+            "qpos": np.concatenate([r.activity.qpos for r in runs]).astype(np.float32),
+            "speed": np.concatenate([np.abs(r.labels["qd"][:, :3]).sum(1) for r in runs]).astype(np.float32),
+            "lengths": np.array([len(r.activity.drive) for r in runs]),
+            "fs": np.array(runs[0].activity.fs),
+        }
+        file.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(file, **out)
+        return out
+
+    def simulate(self, folder: Path, cache: Path, workers: int | None, subject: Subject | None = None) -> dict:
+        """The motions of a session through myogen (the config's subject unless given) -> the EMG as interim (V, fs,
+        filtered), cached; the muscle activity comes from its own cache, so EMG settings re-run only the EMG."""
+        meta = json.loads((folder / "meta.json").read_text())
+        settings = self.resolved(meta, subject)
+        file = cache / meta["key"] / f"{digest(settings)}.npz"  # one per setting
+        if file.exists():
+            saved = np.load(file, allow_pickle=False)
+            return {k: saved[k] for k in ("emg", "windows", "channels", "n_ring")}
+        act = self.activity(folder, cache, workers, subject)
+        windows = self.windows(np.load(folder / "stimulus.npy"), meta["label_fs"], meta)
+        simulator, channels, n_ring = self.simulator(meta, subject)
+        cuts = np.cumsum(act["lengths"])[:-1]
+        parts = [np.split(act[k], cuts) for k in ("drive", "qpos", "speed")]
+        with process_pool(
+            n_workers(len(windows), workers), _emg_init, (simulator.electrodes, simulator.subject, simulator.params)
+        ) as pool:
+            recorded = list(pool.map(_emg_one, *parts, [float(act["fs"])] * len(windows)))
         per_label = meta["fs"] // meta["label_fs"]
         emg = []
-        for (a, b), rec in zip(windows, recordings, strict=True):
-            x = resample(rec.emg.astype(np.float64) * 1e-3, rec.fs, meta["fs"])
+        for (a, b), (x, fs) in zip(windows, recorded, strict=True):
+            x = resample(x.astype(np.float64) * 1e-3, fs, meta["fs"])
             x = causal_filter(x, meta["fs"], meta["processor"]["highpass"], meta["mains_hz"])
             n = (b - a) * per_label
             emg.append(np.pad(x[:n], ((0, max(0, n - len(x))), (0, 0)), mode="edge"))
@@ -198,7 +317,7 @@ class SyntheticCheck:
             "n_ring": np.array(n_ring),
         }
         file.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(file, **out, settings=json.dumps(self.settings()))
+        np.savez(file, **out, settings=json.dumps(settings, sort_keys=True))
         return out
 
     # The comparison
@@ -214,22 +333,33 @@ class SyntheticCheck:
         kept = self.kept(windows, label_fs)
         return np.concatenate([o + k - a for o, k, (a, _) in zip(offsets[:-1], kept, windows, strict=True)]), kept
 
-    def sim_signature(self, folder: Path, sim: dict, normalizer: Normalizer) -> dict:
-        """Action -> (n_ring,) myogen's ring pattern (signature) for this session's motions."""
+    def decoding_data(self, folder: Path, sim: dict, normalizer: Normalizer) -> dict:
+        """The ring's log envelopes (real, myogen; not turned), the joints in 0-1 and the motions' lengths, over the
+        kept frames: what a decoder trains and tests on."""
         meta = json.loads((folder / "meta.json").read_text())
-        frames, _ = self.frames(sim["windows"], meta["label_fs"])
-        log_env = np.log(normalizer.envelope(sim["emg"][:, : int(sim["n_ring"])].astype(np.float64))[frames] + 1e-9)
-        stimulus = np.concatenate([np.load(folder / "stimulus.npy")[a:b] for a, b in sim["windows"]])[frames]
+        per_label, label_fs = meta["fs"] // meta["label_fs"], meta["label_fs"]
+        windows, n_ring = sim["windows"], int(sim["n_ring"])
+        real_emg = np.load(folder / "emg.npy", mmap_mode="r")
+        real = np.concatenate([real_emg[a * per_label : b * per_label, sim["channels"]] for a, b in windows])
+        real = real.astype(np.float64)
+        if meta["electrode_type"] == "monopolar":
+            real = real - real.mean(axis=1, keepdims=True)
+        frames, kept = self.frames(windows, label_fs)
         labels = Normalizer.kin(
-            np.concatenate([np.load(folder / "kin.npy")[a:b] for a, b in sim["windows"]]), meta["kin_stats"]
-        )[frames]
-        return signature(log_env, stimulus, labels, meta["label_fs"])
+            np.concatenate([np.load(folder / "kin.npy")[a:b] for a, b in windows]), meta["kin_stats"]
+        )
+        return {
+            "real": np.log(normalizer.envelope(real[:, :n_ring])[frames] + 1e-9),
+            "sim": np.log(normalizer.envelope(sim["emg"][:, :n_ring].astype(np.float64))[frames] + 1e-9),
+            "targets": joint_targets(labels[frames]),
+            "lengths": [len(k) for k in kept],
+        }
 
     def compare(self, folder: Path, sim: dict, normalizer: Normalizer, placement: tuple | None = None) -> dict:
-        """Real against myogen. placement (steps, mirror, flip, sim_steps): the real band's placement, known from
-        elsewhere (the calibration baseline): the real ring channels are turned into the calibration frame, and
-        myogen's by sim_steps (sim_anchor). None: myogen's ring is turned to the placement that matches the real
-        patterns best (optimistic)."""
+        """Real against myogen. placement (steps, mirror, reversed): the real band's placement, known from the
+        calibration baseline: the real ring channels are turned into the calibration frame (reversed: its direction
+        against myogen's; myogen's electrodes sit at ring_offset_deg in it). None: myogen's ring is turned to the
+        placement that matches the real patterns best (optimistic)."""
         meta = json.loads((folder / "meta.json").read_text())
         per_label, label_fs = meta["fs"] // meta["label_fs"], meta["label_fs"]
         channels, windows, n_ring = sim["channels"], sim["windows"], int(sim["n_ring"])
@@ -254,12 +384,9 @@ class SyntheticCheck:
         if placement is None:  # move myogen's band onto the real one
             step, mirror, _ = best_placement(sigs["sim"], sigs["real"], actions)
             turns = {"sim": lambda x: place(x, step, mirror)}
-        else:  # both bands into the calibration frame
-            step, mirror, flip, sim_step = placement
-            turns = {
-                "real": lambda x: place(place(x, step, mirror), 0, flip),
-                "sim": lambda x: place(x, sim_step, False),
-            }
+        else:  # the real band into the calibration frame
+            step, mirror, flip = placement
+            turns = {"real": lambda x: place(place(x, step, mirror), 0, flip)}
         for k, turn in turns.items():
             emg[k], env[k], log_env[k] = turn(emg[k]), turn(env[k]), turn(log_env[k])
             sigs[k] = {a: turn(v) for a, v in sigs[k].items()}
@@ -286,6 +413,14 @@ class SyntheticCheck:
             "r_signature": r_sig,
             "placement": (step, mirror),
             "profile": {k: ring_profile(v, moving) for k, v in env.items()},
+            "r_profile": float(
+                np.nanmean(
+                    [
+                        pearson(*(np.log(ring_profile(v, moving)[i]) for v in (env["real"], env["sim"])))
+                        for i in range(n_ring // N_ANGLES)
+                    ]
+                )
+            ),
             "spots": {
                 "names": [
                     f"{(a % 360):.0f}°" for a in ElectrodeLayout.from_meta(meta).positions()[channels[n_ring:], 0]
@@ -545,75 +680,6 @@ def report_channels(results: list[dict]) -> None:
         print(row)
 
 
-def plot(results: list[dict], ref: dict, path: Path) -> None:
-    datasets = [d for d in DATASET_COLORS if any(r["dataset"] == d for r in results)]
-    fig, axes = plt.subplots(
-        len(datasets),
-        3,
-        figsize=(13, 2.4 * len(datasets)),
-        gridspec_kw={"width_ratios": [2.6, 1.6, 1.2]},
-        squeeze=False,
-    )
-    plt.rcParams.update({"font.size": 8})
-    for row, dataset in zip(axes, datasets, strict=True):
-        runs_ = [r for r in results if r["dataset"] == dataset]
-        example = max(runs_, key=lambda r: r["r_global"])
-        color = DATASET_COLORS[dataset]
-
-        ax = row[0]  # mean RMS over the ring, each / its 95th percentile
-        trace = example["trace"]
-        n = min(len(trace["real"]), int(60 * 100))
-        t = np.arange(n) / 100
-        for name, c in (("real", REAL), ("sim", SIM)):
-            y = trace[name][:n].mean(1)
-            ax.plot(t, y / np.percentile(y, 95), color=c, lw=0.8, label="recorded" if name == "real" else "myogen")
-        for edge in np.cumsum(trace["lengths"])[:-1]:
-            if edge < n:
-                ax.axvline(edge / 100, color="#d8d7d2", lw=0.5)
-        ax.set_ylabel("ring RMS / p95")
-        ax.set_title(f"{dataset}  ·  {example['key'].split('/', 1)[1]}", loc="left", color=color, fontsize=9)
-        ax.set_xlim(0, n / 100)
-        if row is axes[-1]:
-            ax.set_xlabel("time in the simulated motions (s)")
-        if row is axes[0]:
-            ax.legend(frameon=False, loc="upper right", ncol=2)
-
-        ax = row[1]  # signatures: actions x channels, recorded | myogen
-        actions = example["actions"]
-        real = np.array([example["signatures"]["real"][a] for a in actions])
-        sim = np.array([example["signatures"]["sim"][a] for a in actions])
-        gap = np.full((len(actions), 1), np.nan)
-        top = np.nanpercentile(np.abs(np.hstack([real, sim])), 98)
-        ax.imshow(np.hstack([real, gap, sim]), cmap="RdBu_r", vmin=-top, vmax=top, aspect="auto", interpolation="none")
-        ax.set_xticks([real.shape[1] / 2 - 0.5, real.shape[1] * 1.5 + 0.5], ["recorded", "myogen"])
-        ax.set_yticks(range(len(actions)), actions if len(actions) <= 10 else [""] * len(actions))
-        ax.tick_params(length=0)
-        ax.set_title(f"action patterns  r = {example['r_signature']:.2f}", loc="left", fontsize=9)
-
-        ax = row[2]  # agreement per session
-        metrics = {
-            "global": [r["r_global"] for r in runs_],
-            "channel": [r["r_channel"] for r in runs_],
-            "pattern": [r["r_signature"] for r in runs_],
-            "pattern\nreal-real": [np.mean(ref[r["key"]]["pattern"]) for r in runs_ if ref[r["key"]]["pattern"]],
-        }
-        for i, values in enumerate(metrics.values()):
-            jitter = np.linspace(-0.12, 0.12, len(values)) if len(values) > 1 else [0]
-            ax.scatter(i + np.asarray(jitter), values, s=12, color=color if i < 3 else REAL, alpha=0.8, lw=0)
-            if values:
-                ax.hlines(np.median(values), i - 0.25, i + 0.25, color="black", lw=1)
-        ax.set_xticks(range(len(metrics)), list(metrics))
-        ax.set_ylim(-0.3, 1)
-        ax.axhline(0, color="#d8d7d2", lw=0.5)
-        ax.set_ylabel("r")
-        for a in row:
-            a.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=200)
-    print(f"-> {path}")
-
-
 def known_placements(calibration: Path) -> dict[str, tuple[int, bool]]:
     """Session key -> (steps, mirror) of its band in the calibration baseline's frame (wrist flexors palmar)."""
     file = calibration / "sessions.parquet"
@@ -664,55 +730,73 @@ def plot_channels(results: list[dict], path: Path) -> None:
     print(f"-> {path}")
 
 
-def sim_anchor(check, sims: dict, normalizer) -> int:
-    """Steps that turn myogen's ring into the calibration frame by the baseline's own rule: each anchored action
-    (wrist flexion: a DB2 / DB7 cue) peaks at its angle. One turn for every session (myogen's anatomy is one);
-    0 without sessions that have the cue."""
-    anchored = {a: s for a, s in CalibBaseline.load().actions.items() if "anchor_deg" in s and "cues" in s}
-    patterns = {a: [] for a in anchored}
-    for folder, sim in sims.items():
-        meta = json.loads((folder / "meta.json").read_text())
-        sig = check.sim_signature(folder, sim, normalizer)
-        for a, spec in anchored.items():
-            cue = spec["cues"].get(f"{meta['dataset']}/{meta['session']}")
-            if cue is not None and f"cue {cue}" in sig:
-                patterns[a].append(sig[f"cue {cue}"].reshape(-1, N_ANGLES).mean(0))
-    mean = {a: np.mean(p, axis=0) for a, p in patterns.items() if p}
-    if not mean:
-        return 0
-
-    def error(k):
-        return sum(
-            abs((CalibBaseline.peak_deg(place(p, k, False)) - anchored[a]["anchor_deg"] + 180) % 360 - 180)
-            for a, p in mean.items()
-        )
-
-    step = min(range(N_ANGLES), key=error)
-    print(f"myogen ring anchored ({', '.join(mean)}): turned {step * 360 // N_ANGLES} deg")
-    return step
-
-
 def compare_all(check, sims: dict, normalizer, placements: dict) -> list[dict]:
-    """Every session; with known placements, the band direction of the calibration frame (radial one way or the
-    other: one choice for every session) taken as the one that matches myogen's patterns best, and reported."""
+    """Every session; with known placements, in the calibration frame (direction: ring_reversed)."""
     if not placements:
         return [check.compare(folder, sim, normalizer) for folder, sim in sims.items()]
-    sim_step = sim_anchor(check, sims, normalizer) if check.sim_anchor else 0
     keys = {folder: json.loads((folder / "meta.json").read_text())["key"] for folder in sims}
-    known = {folder: sim for folder, sim in sims.items() if keys[folder] in placements}
-    if missing := [keys[f] for f in sims if f not in known]:
+    if missing := [keys[f] for f in sims if keys[f] not in placements]:
         print(f"no calibration placement, left out: {missing}")
-    by_flip = {
-        flip: [check.compare(f, sim, normalizer, (*placements[keys[f]], flip, sim_step)) for f, sim in known.items()]
-        for flip in (False, True)
-    }
-    scores = {flip: np.nanmedian([r["r_signature"] for r in res]) for flip, res in by_flip.items()}
-    flip = max(scores, key=scores.get)
-    print(
-        f"calibration frame direction: pattern r {scores[False]:.2f} as is, {scores[True]:.2f} reversed -> "
-        f"{'reversed' if flip else 'as is'}"
+    return [
+        check.compare(f, sim, normalizer, (*placements[keys[f]], check.ring_reversed))
+        for f, sim in sims.items()
+        if keys[f] in placements
+    ]
+
+
+def score(results: list[dict]) -> dict[str, dict[str, float]]:
+    """Per dataset, how much myogen's channels look like the recorded ones, median over sessions: r of each ring
+    channel's RMS over time (median over channels), r of the channels' levels while moving (ring profile), and their
+    mean (the score); "mean" over datasets."""
+    out = {}
+    for dataset in sorted({r["dataset"] for r in results}):
+        res = [r for r in results if r["dataset"] == dataset]
+        channel, profile = (float(np.nanmedian([r[k] for r in res])) for k in ("r_channel", "r_profile"))
+        pattern = float(np.nanmedian([r["r_signature"] for r in res]))
+        decoder = float(np.nanmedian([r["transfer"]["sim_real"] for r in res]))
+        out[dataset] = {
+            "channel": channel,
+            "profile": profile,
+            "score": (channel + profile) / 2,
+            "pattern": pattern,
+            "decoder": decoder,
+        }
+    out["mean"] = {k: float(np.mean([v[k] for v in out.values()])) for k in next(iter(out.values()))}
+    return out
+
+
+def report_score(scores: dict) -> None:
+    print("\nper-channel resemblance (median over sessions)")
+    print(f"{'':16}" + "".join(f"{k:>10}" for k in next(iter(scores.values()))))
+    for dataset, v in scores.items():
+        print(f"{dataset:16}" + "".join(f"{x:10.3f}" for x in v.values()))
+
+
+def digest(settings: dict) -> str:
+    return hashlib.sha1(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:12]
+
+
+_EMG_SIMULATOR = None
+
+
+def _emg_init(electrodes: Electrodes, subject: Subject, params: SimParams) -> None:
+    global _EMG_SIMULATOR
+    _EMG_SIMULATOR = Simulator(electrodes, subject, params)
+
+
+def _emg_one(drive: np.ndarray, qpos: np.ndarray, speed: np.ndarray, fs: float) -> tuple[np.ndarray, float]:
+    """A motion's recorded EMG from its muscle activity (as Simulator.run: the EMG step, then the device)."""
+    sim = _EMG_SIMULATOR
+    none = np.zeros((len(drive), 0))
+    activity = MuscleActivity(
+        fs, drive, drive.astype(float), none, none, none, qpos.astype(float), none, none, none, np.zeros(len(drive))
     )
-    return by_flip[flip]
+    clean = sim.emg.generate(activity, np.random.default_rng(np.random.SeedSequence([sim.subject.seed, 1])))
+    rng = np.random.default_rng(np.random.SeedSequence([sim.subject.seed, 2]))
+    x = acquisition.record(
+        clean, sim.params.emg.fs, sim.electrodes, speed, sim.params.control.fs, rng, sim.params.acquisition
+    )
+    return x, sim.electrodes.fs_out
 
 
 def main():
@@ -722,8 +806,7 @@ def main():
     parser.add_argument("--out", default="docs/figures")
     parser.add_argument("--params", default="params.yaml")
     parser.add_argument("--config", default=str(CONFIG), help="the synthetic check settings")
-    parser.add_argument("--dataset", action="append", help="repeatable; default: every free-movement dataset")
-    parser.add_argument("--subjects", type=int, default=3, help="subjects per dataset")
+    parser.add_argument("--recording", help="interim session key (default: the config's recording)")
     parser.add_argument("--workers", type=int, help="processes per session; default: the CPU count")
     parser.add_argument("--calibration", default="data/processed/calibration", help="the bands' known placements")
     parser.add_argument("--placement", choices=["calibration", "search"], help="default: the config's")
@@ -732,18 +815,17 @@ def main():
 
     check = SyntheticCheck.load(Path(args.config))
     normalizer = Processor(**yaml.safe_load(Path(args.params).read_text())["processor"]).normalizer
-    sims = {}
-    for folder in check.sessions(Path(args.interim), args.subjects, args.dataset):
-        sims[folder] = check.simulate(folder, Path(args.cache), args.workers)
     mode = args.placement or check.placement
     placements = known_placements(Path(args.calibration)) if mode == "calibration" else {}
     if mode == "calibration" and not placements:
         print(f"no calibration baseline in {args.calibration}: best placements instead")
+    folder = Path(args.interim) / (args.recording or check.recording)
+    sims = {folder: check.simulate(folder, Path(args.cache), args.workers)}
     results = compare_all(check, sims, normalizer, placements)
+    report_score(score(results))
     ref = reference(results)
     report(results, ref)
     report_channels(results)
-    plot(results, ref, Path(args.out) / "synthetic_rms.png")
     plot_channels(results, Path(args.out) / "synthetic_channels.png")
 
 

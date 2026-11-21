@@ -4,14 +4,18 @@ free_movement:  # sessions with no object or load in the hand
   ninapro_db7: [E1]
   ninapro_db8: [A1, A2, A3]
   # great: grasps of objects
+required_joints: [thumb_cmc_flex, thumb_cmc_abd, thumb_mcp_flex, thumb_ip_flex, index_mcp_flex, index_pip_flex, middle_mcp_flex, middle_pip_flex, ring_mcp_flex, ring_pip_flex, pinky_mcp_flex, pinky_pip_flex, index_middle_abd, middle_ring_abd, ring_pinky_abd, wrist_flex, wrist_dev]  # myogen scope.md: sessions without them are not targets (EMG-FK: no wrist, no abduction)
+excluded_cues: {ninapro_db2: {E1: [9, 10, 11, 12]}, ninapro_db7: {E1: [9, 10, 11, 12]}}  # forearm rotation, not tracked
 conditions: [intact]  # amputees: the kinematics are not of the EMG hand
 hand: myo_hand  # femg/hand/models: canonical joints (0-1) -> the model's joints, myogen and MyoHand share them
-subject: {grip_load: 0.0}  # myogen Subject overrides: no squeezing, free movement only
-params: {emg: {engine: motor_units, decay_mm: 8.0, anatomy: atlas}}  # myogen SimParams overrides per stage; decay 8: best transfer (motor units); anatomy: atlas | lines
+subject: {grip_load: 0.0}  # myogen Subject overrides
+params: {emg: {decay_mm: 8.0}}  # myogen SimParams overrides
 random_subject: false  # true: Subject.random(seed) per session, else the average subject
 ied_mm: 10.0  # bipolar pole spacing: Delsys Trigno
+noise_uv: 1.5  # skin + amplifier noise per channel (uV RMS), myogen's default
 monopolar_reference: average  # monopolar bands (EMG-FK) against their common average, as the virtual array does
 rest_anchor: true  # the rest cue's posture is the model's relaxed hand (raw gloves have no zero)
+window_rest: true  # each motion's rest frames set its relaxed posture (the glove's rest drifts over a session)
 reps_per_cue: 2  # repetitions simulated per cue, each its own motion
 pad_s: 1.5  # rest kept before and after each repetition
 chunk_s: 30.0  # sessions without cues: windows of this length
@@ -19,4 +23,8 @@ chunks: 6  # ... this many, evenly over the session
 skip_s: 1.0  # start of each motion left out of the metrics (high-pass transient)
 spots: true  # also the electrodes placed over a muscle (DB2 / DB7: FDS, EDC): compared without any placement search
 placement: calibration  # real bands turned into the anatomical frame by the calibration baseline | search (optimistic)
-sim_anchor: false  # myogen's ring turned into that frame by the baseline's own rule (wrist flexion cue palmar); false: myogen's anatomical frame as is
+ring_offset_deg: -45.0  # myogen's ring electrodes turned against the calibration frame (fitted on the tune subjects; docs: myogen iterations.md)
+ring_reversed: false  # the calibration frame runs the other way round against myogen's
+target: {seed: 0, tune: 3, validate: 3}  # subjects drawn at random per dataset: tune (decisions), then validate (held out)
+augment: {subjects: 3, overrides: {grip_load: 0.0}}  # train_synthetic.py: Subject.random people per session, and what they all share
+recording: ninapro_db2/s01/E1  # compare_synthetic.py: the one recording iterated on (exercise B: no objects)
